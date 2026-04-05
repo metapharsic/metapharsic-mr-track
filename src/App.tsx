@@ -75,19 +75,23 @@ const ErrorFallback = ({ error }: { error?: string }) => (
 );
 
 export default function App() {
-  return (
+  const useGoogle = GOOGLE_CLIENT_ID && GOOGLE_CLIENT_ID !== '';
+
+  const content = (
     <ErrorBoundary onError={() => {}}>
-      <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-        <AuthProvider>
-          <NotificationProvider>
-            <Router>
-              <AppContent />
-            </Router>
-          </NotificationProvider>
-        </AuthProvider>
-      </GoogleOAuthProvider>
+      <AuthProvider>
+        <NotificationProvider>
+          <Router>
+            <AppContent />
+          </Router>
+        </NotificationProvider>
+      </AuthProvider>
     </ErrorBoundary>
   );
+
+  return useGoogle
+    ? <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>{content}</GoogleOAuthProvider>
+    : content;
 }
 
 // Protected Route component
