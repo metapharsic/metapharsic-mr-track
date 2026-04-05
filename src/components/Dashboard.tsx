@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  LineChart, Line, AreaChart, Area, PieChart, Pie, Cell 
+import { useNavigate } from 'react-router-dom';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  LineChart, Line, AreaChart, Area, PieChart, Pie, Cell
 } from 'recharts';
-import { 
-  TrendingUp, Users, Package, Award, 
-  ArrowUpRight, ArrowDownRight, Target, 
-  Calendar, MapPin, Clock
+import {
+  TrendingUp, Users, Package, Award,
+  ArrowUpRight, ArrowDownRight, Target,
+  Calendar, MapPin, Clock, FileText, Download, Upload
 } from 'lucide-react';
 import { api } from '../services/api';
 import { MR, Sale, Target as TargetType, ForecastData } from '../types';
@@ -14,6 +15,7 @@ import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [mrs, setMrs] = useState<MR[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [targets, setTargets] = useState<TargetType[]>([]);
@@ -329,9 +331,22 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <button className="mt-8 px-6 py-3 bg-white text-slate-900 rounded-xl text-sm font-bold hover:bg-slate-100 transition-colors">
-              View Detailed AI Analysis
-            </button>
+            <div className="flex gap-3 mt-8">
+              <button
+                onClick={() => navigate('/data-management')}
+                className="flex-1 px-4 py-3 flex items-center justify-center gap-2 bg-white text-slate-900 rounded-xl text-sm font-bold hover:bg-slate-100 transition-colors"
+              >
+                <FileText size={16} />
+                Manage Data
+              </button>
+              <button
+                onClick={() => navigate('/data-management?q=download')}
+                className="flex-1 px-4 py-3 flex items-center justify-center gap-2 bg-slate-800 border border-slate-700 text-white rounded-xl text-sm font-bold hover:bg-slate-700 transition-colors"
+              >
+                <Download size={16} />
+                Export Reports
+              </button>
+            </div>
           </div>
           
           {/* Decorative background element */}

@@ -1190,6 +1190,72 @@ async function startServer() {
     }
   });
 
+  // Data Quality Endpoint
+  app.get("/api/data-quality", (req, res) => {
+    try {
+      const calcCompleteness = (items: any[], fields: string[]) => {
+        if (!items || items.length === 0) return 100;
+        let filled = 0, total = 0;
+        items.forEach(item => {
+          fields.forEach(f => {
+            const val = item[f];
+            total++;
+            if (val !== undefined && val !== null && val !== '') filled++;
+          });
+        });
+        return total > 0 ? Math.round((filled / total) * 100) : 100;
+      };
+
+      const calcDuplicates = (items: any[], field: string) => {
+        if (!items || items.length === 0) return 0;
+        const seen = new Set<string>();
+        let dups = 0;
+        items.forEach(item => {
+          const val = String(item[field] || '').trim().toLowerCase();
+          if (val) {
+            if (seen.has(val)) dups++;
+            else seen.add(val);
+          }
+        });
+        return dups;
+      };
+
+      const doctorFields = ['name', 'clinic', 'specialty', 'territory', 'phone', 'email', 'tier'];
+      const pharmacyFields = ['name', 'owner_name', 'phone', 'address', 'territory', 'tier'];
+      const hospitalFields = ['name', 'type', 'contact_person', 'phone', 'address', 'territory', 'bed_count', 'tier'];
+
+      const doctorsCompleteness = calcCompleteness(data.doctors, doctorFields);
+      const pharmaciesCompleteness = calcCompleteness(data.pharmacies, pharmacyFields);
+      const hospitalsCompleteness = calcCompleteness(data.hospitals, hospitalFields);
+      const overallScore = Math.round((doctorsCompleteness + pharmaciesCompleteness + hospitalsCompleteness) / 3);
+
+      const doctorDups = calcDuplicates(data.doctors, 'name');
+      const pharmacyDups = calcDuplicates(data.pharmacies, 'name');
+      const hospitalDups = calcDuplicates(data.hospitals, 'name');
+      const totalDups = doctorDups + pharmacyDups + hospitalDups;
+
+      const suggestions: string[] = [];
+      if (overallScore < 80) suggestions.push('Fill in missing contact information across all entities');
+      if (doctorDups > 0) suggestions.push(`Review ${doctorDups} potential duplicate doctor entries for merging`);
+      if (pharmacyDups > 0) suggestions.push(`Review ${pharmacyDups} potential duplicate pharmacy entries`);
+      if (hospitalDups > 0) suggestions.push(`Review ${hospitalDups} potential duplicate hospital entries`);
+      if (!data.doctors?.length || data.doctors.length < 50) suggestions.push('Add more doctor records for better coverage');
+      if (!data.hospitals?.length || data.hospitals.length < 20) suggestions.push('Expand hospital network data');
+
+      res.json({
+        doctors: { completeness: doctorsCompleteness, duplicates: doctorDups, total: data.doctors?.length || 0 },
+        pharmacies: { completeness: pharmaciesCompleteness, duplicates: pharmacyDups, total: data.pharmacies?.length || 0 },
+        hospitals: { completeness: hospitalsCompleteness, duplicates: hospitalDups, total: data.hospitals?.length || 0 },
+        overallScore,
+        totalDuplicates: totalDups,
+        suggestions
+      });
+    } catch (error: any) {
+      console.error('Error in /api/data-quality:', error);
+      res.status(500).json({ error: 'Failed to fetch data quality', message: error.message });
+    }
+  });
+
   // Monthly Performance Metrics Endpoint
   app.get("/api/monthly-metrics", (req, res) => {
     try {
