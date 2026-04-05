@@ -111,9 +111,16 @@ export default function Sidebar({ onOpenSearch }: SidebarProps) {
 
   return (
     <div className="w-64 bg-slate-900 text-white h-screen flex flex-col fixed left-0 top-0 z-50">
-      <div className="p-6 border-b border-slate-800">
-        <h1 className="text-xl font-bold text-blue-400 tracking-tight">Metapharsic</h1>
-        <p className="text-xs text-slate-400 uppercase font-semibold mt-1">Lifesciences</p>
+      <div className="p-4 border-b border-slate-800 flex items-center gap-3">
+        <img
+          src="/metapharsic_light.png"
+          alt="Metapharsic"
+          className="w-10 h-10 object-contain drop-shadow-lg"
+        />
+        <div>
+          <h1 className="text-xl font-bold text-blue-400 tracking-tight">Metapharsic</h1>
+          <p className="text-xs text-slate-400 uppercase font-semibold">Lifesciences</p>
+        </div>
       </div>
 
       {/* AI Search Button */}

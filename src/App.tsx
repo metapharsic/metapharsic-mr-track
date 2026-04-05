@@ -156,12 +156,27 @@ function AppContent() {
 
   return (
     <div className="relative">
+      {/* Global elegant watermark */}
+      <img
+        src={metapharsicLogo}
+        alt=""
+        className="fixed pointer-events-none"
+        style={{
+          top: '50%',
+          left: '50%',
+          transform: 'translate(-50%, -50%)',
+          width: '700px',
+          opacity: 0.04,
+          filter: 'saturate(0)',
+          zIndex: 9999,
+        }}
+      />
       <div className="min-h-screen bg-slate-50 flex">
         <Suspense fallback={<div style={{ width: '256px', padding: '20px' }}>Loading navigation...</div>}>
           <Sidebar onOpenSearch={() => setSearchOpen(true)} />
         </Suspense>
-        
-        <main className="flex-1 ml-64 min-h-screen p-8">
+
+        <main className="flex-1 ml-64 min-h-screen p-8 relative z-10">
           <Suspense fallback={<LoadingFallback />}>
             <Routes>
               <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
