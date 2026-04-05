@@ -142,34 +142,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Load users and current user from localStorage
   useEffect(() => {
-    const savedUsers = localStorage.getItem('metapharsic_users');
     const savedUser = localStorage.getItem('metapharsic_current_user');
-    
-    if (savedUsers) {
-      // Merge saved users with default MR users to ensure MRs always exist
-      const parsedUsers: User[] = JSON.parse(savedUsers);
-      const existingEmails = new Set(parsedUsers.map(u => u.email.toLowerCase()));
-      
-      // Add any missing default MR users
-      const missingMRUsers = DEFAULT_MR_USERS.filter(mr => !existingEmails.has(mr.email.toLowerCase()));
-      const mergedUsers = [...parsedUsers, ...missingMRUsers];
-      
-      setUsers(mergedUsers);
-      if (missingMRUsers.length > 0) {
-        localStorage.setItem('metapharsic_users', JSON.stringify(mergedUsers));
-        console.log('[Auth] Added', missingMRUsers.length, 'missing MR users');
-      }
-    } else {
-      // Initialize with default admin and sample MR users
-      const initialUsers: User[] = [DEFAULT_ADMIN, ...DEFAULT_MR_USERS];
-      setUsers(initialUsers);
-      localStorage.setItem('metapharsic_users', JSON.stringify(initialUsers));
+    let mergedUsers: User[] = [];
+
+    try {
+      const savedUsers = localStorage.getItem('metapharsic_users');
+      const parsedUsers: User[] = savedUsers ? JSON.parse(savedUsers) : [];
+
+      // Always ensure default users exist (merge by email)
+      const emailMap = new Map<string, User>();
+      for (const u of parsedUsers) emailMap.set(u.email.toLowerCase(), u);
+      for (const u of [DEFAULT_ADMIN, ...DEFAULT_MR_USERS]) emailMap.set(u.email.toLowerCase(), u);
+
+      // Re-assign consistent IDs based on the defaults
+      mergedUsers = Array.from(emailMap.values());
+
+      // Ensure default admin has ID 1
+      mergedUsers = mergedUsers.map(u => u.email === DEFAULT_ADMIN.email ? { ...u, id: 1 } : u);
+    } catch {
+      console.error('[Auth] Error parsing users, resetting to defaults');
+      mergedUsers = [DEFAULT_ADMIN, ...DEFAULT_MR_USERS];
     }
-    
+
+    setUsers(mergedUsers);
+    localStorage.setItem('metapharsic_users', JSON.stringify(mergedUsers));
+
+    // Validate current user
     if (savedUser) {
-      setUser(JSON.parse(savedUser));
+      try {
+        const parsedUser = JSON.parse(savedUser);
+        const stillExists = mergedUsers.find(u => u.id === parsedUser.id);
+        if (stillExists) {
+          setUser(stillExists);
+        } else {
+          localStorage.removeItem('metapharsic_current_user');
+        }
+      } catch {
+        localStorage.removeItem('metapharsic_current_user');
+      }
     }
-    
+
     setIsLoading(false);
   }, []);
 
@@ -181,52 +193,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [users]);
 
   const login = useCallback(async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
-    // Simulate API call delay
     await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Get latest users from localStorage to ensure we have the most current data
-    const savedUsers = localStorage.getItem('metapharsic_users');
-    console.log('[Auth] Saved users from localStorage:', savedUsers);
-    console.log('[Auth] Current users state:', users);
-    
-    const currentUsers = savedUsers ? JSON.parse(savedUsers) : users;
-    console.log('[Auth] Using users:', currentUsers.length, 'users');
-    console.log('[Auth] Looking for email:', email.toLowerCase());
-    console.log('[Auth] Available emails:', currentUsers.map((u: User) => u.email.toLowerCase()));
-    
-    // For demo: admin/admin123 or mr@email/password
-    const foundUser = currentUsers.find((u: User) => u.email.toLowerCase() === email.toLowerCase());
-    console.log('[Auth] Found user:', foundUser);
-    
+
+    // Use state users (always seeded on mount) or localStorage fallback
+    const emailLower = email.toLowerCase();
+    const allUsers = users.length > 0 ? users : DEFAULT_MR_USERS;
+    const foundUser = allUsers.find(u => u.email.toLowerCase() === emailLower);
+    console.log('[Auth] Login attempt for', email, '→ found:', foundUser?.name, foundUser?.role);
+    console.log('[Auth] Available users:', allUsers.map(u => `${u.email} (${u.role})`).join(', '));
+
     if (!foundUser) {
       // Demo credentials - create admin on the fly if not exists
-      if (email.toLowerCase() === 'admin@metapharsic.com' && password === 'admin123') {
-        const adminUser = DEFAULT_ADMIN;
-        setUser(adminUser);
-        localStorage.setItem('metapharsic_current_user', JSON.stringify(adminUser));
-        
-        // Add admin to users if not present
-        const updatedUsers = [...currentUsers.filter((u: User) => u.email !== adminUser.email), adminUser];
+      if (emailLower === 'admin@metapharsic.com' && password === 'admin123') {
+        setUser(DEFAULT_ADMIN);
+        localStorage.setItem('metapharsic_current_user', JSON.stringify(DEFAULT_ADMIN));
+        const updatedUsers = [...allUsers.filter((u: User) => u.email !== DEFAULT_ADMIN.email), DEFAULT_ADMIN];
         setUsers(updatedUsers);
-        localStorage.setItem('metapharsic_users', JSON.stringify(updatedUsers));
-        
         return { success: true };
       }
       return { success: false, error: 'Invalid email or password' };
     }
-    
-    // In real app, verify password hash here
-    // For demo, accept any password for existing users
+
+    // Accept any password for existing users (demo mode)
     setUser(foundUser);
     localStorage.setItem('metapharsic_current_user', JSON.stringify(foundUser));
-    
+
     // Update last login
-    const updatedUsers = currentUsers.map((u: User) => 
+    const updatedUsers = allUsers.map((u: User) =>
       u.id === foundUser.id ? { ...u, last_login: new Date().toISOString() } : u
     );
     setUsers(updatedUsers);
-    localStorage.setItem('metapharsic_users', JSON.stringify(updatedUsers));
-    
+
     return { success: true };
   }, [users]);
 

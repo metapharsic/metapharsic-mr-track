@@ -1,518 +1,622 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, Volume2, VolumeX } from 'lucide-react';
-import { 
-  extractPageContent, 
-  getAllForms, 
-  fillFormField, 
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Mic, MicOff } from 'lucide-react';
+import {
+  extractPageContent,
+  getAllForms,
+  fillFormField,
   submitNearestForm,
   clickButtonByText,
   readPageContent,
   getFormSummary,
   getCurrentFormValues,
-  readTableData
+  deleteEntityByName,
+  readTableData,
+  searchAndNavigate,
 } from '../utils/voiceUtils';
 
-interface VoiceAssistantProps {
+export interface VoiceAssistantProps {
   onCommand: (command: string) => void;
   onNavigate: (path: string) => void;
 }
 
-// Enhanced command mapping with multiple synonyms
-const COMMANDS = {
-  // Navigation
-  'dashboard|home': '/',
-  'mr|medical representative|mr management': '/mrs',
-  'product|portfolio': '/products',
-  'healthcare|directory|doctor|hospital': '/directory',
-  'sale|sales': '/sales',
-  'expense|cost': '/expenses',
-  'schedule|visit': '/schedule',
-  'lead': '/leads',
-  'performance': '/performance',
-  'data management': '/data-management',
-  
-  // Reading/Querying
-  'read page|read current|what is on screen|read all|tell me about': 'read-page',
-  'read form|show form|what forms': 'read-form',
-  'read table|read data|table data': 'read-table',
-  'read all data|show all content|all metrics': 'read-detailed',
-  'what is the current|current metrics|current values': 'read-metrics',
-  
-  // Form operations
-  'fill form|fill fields|enter data': 'prepare-form',
-  'submit|send|confirm': 'submit-form',
-  'clear|reset': 'clear-form',
-  
-  // Actions
-  'search|find|look': 'search',
-  'close search|close': 'close-search',
-  'click|button': 'handle-click',
-  'help|command': 'help',
+// Navigation mapping (English)
+const NAV_MAP: Record<string, string> = {
+  '(dashboard|home|main)': '/',
+  '(mr|medical representative|mr management|mr list)': '/mrs',
+  '(product|portfolio|items)': '/products',
+  '(healthcare|directory|doctor|hospital|clinic|doctor.*directory)': '/directory',
+  '(sale|sales|revenue|orders)': '/sales',
+  '(expense|cost|bill|expense.*manager)': '/expenses',
+  '(schedule|visit|calendar)': '/schedule',
+  '(lead)': '/leads',
+  '(mr-dashboard)': '/mr-dashboard',
+  '(performance|report|analytics)': '/performance',
+  '(data management|data)': '/data-management',
+  '(setting)': '/settings',
+  '(user|user management)': '/users',
+  '(approv)': '/approvals',
+  '(credit|entity credit)': '/entity-credits',
 };
 
-// Action prefixes that indicate intent
-const ACTION_PREFIXES = [
-  'show me', 'show', 'take me to', 'take me', 'go to', 'go', 'open',
-  'navigate to', 'navigate', 'display', 'bring up', 'pull up',
-  'get me', 'get to', 'access', 'view', 'check',
+// Page names for feedback
+const PAGE_NAMES: Record<string, string> = {
+  '/': 'Dashboard',
+  '/mrs': 'MR Management',
+  '/products': 'Product Portfolio',
+  '/directory': 'Healthcare Directory',
+  '/sales': 'Sales Tracking',
+  '/expenses': 'Expense Manager',
+  '/schedule': 'Visit Schedule',
+  '/leads': 'Leads Management',
+  '/mr-dashboard': 'MR Dashboard',
+  '/performance': 'Performance',
+  '/data-management': 'Data Management',
+  '/settings': 'Settings',
+};
+
+// Hindi page names
+const HINDI_PAGE_NAMES: Record<string, string> = {
+  '/': 'डैशबोर्ड',
+  '/mrs': 'एमआर मैनेजमेंट',
+  '/products': 'प्रोडक्ट पोर्टफोलियो',
+  '/directory': 'हेल्थकेयर डायरेक्टरी',
+  '/sales': 'सेल्स ट्रैकिंग',
+  '/expenses': 'एक्सपेंस मैनेजर',
+  '/schedule': 'विजिट शेड्यूल',
+  '/leads': 'लीड्स मैनेजमेंट',
+  '/mr-dashboard': 'एमआर डैशबोर्ड',
+  '/performance': 'परफॉर्मेंस',
+  '/data-management': 'डेटा मैनेजमेंट',
+  '/settings': 'सेटिंग्स',
+};
+
+// Hindi navigation commands
+const HINDI_NAV_MAP: [RegExp, string][] = [
+  [/डैशबोर्ड|होम|मुख्यपृष्ठ|घर|डैश बोर्ड/, '/'],
+  [/एमआर|मेडिकल.*रिप्रेजेंटेटिव|mr\s*मैनेजमेंट|mr\s*लिस्ट/, '/mrs'],
+  [/प्रोडक्ट|उत्पाद|पोर्टफोलियो|आइटम/, '/products'],
+  [/डॉक्टर|डायरेक्टरी|health|healthcare|clinic|क्लिनिक|अस्पताल|hospital/, '/directory'],
+  [/सेल्स|बिक्री|राजस्व|revenue|sale/, '/sales'],
+  [/खर्च|expense|लागत|cost|बिल/, '/expenses'],
+  [/शेड्यूल|विजिट|schedule|calendar/, '/schedule'],
+  [/लीड|lead/, '/leads'],
+  [/परफॉर्मेंस|performance|रिपोर्ट/, '/performance'],
+  [/डेटा|data/, '/data-management'],
+  [/सेटिंग|setting/, '/settings'],
+  [/mr-डैशबोर्ड|mr\s*डैशबोर्ड/, '/mr-dashboard'],
+  [/यूज़र|user|प्रयोक्ता/, '/users'],
+  [/अप्रूवल|approval|अनुमोदन/, '/approvals'],
 ];
 
-// Extract main intent/noun from sentence
-function extractIntent(sentence: string): string {
-  const lower = sentence.toLowerCase().trim();
-  
-  // Remove common action prefixes and get the remaining text
-  for (const prefix of ACTION_PREFIXES) {
-    if (lower.startsWith(prefix)) {
-      const remaining = lower.slice(prefix.length).trim();
-      return remaining.split(/\s+(for|on|today|tomorrow|this|that|at|in|and|or)\s+/)[0].trim();
-    }
-  }
-  
-  return lower;
-}
-
-// Find matching command for extracted intent
-function findCommand(intent: string): string | null {
-  const words = intent.split(/\s+/);
-  
-  // Check multi-word matches first (more specific)
-  for (let i = words.length; i > 0; i--) {
-    const phrase = words.slice(0, i).join(' ').trim();
-    
-    for (const [patterns, command] of Object.entries(COMMANDS)) {
-      const patternList = patterns.split('|');
-      if (patternList.some(p => phrase.includes(p) || p.includes(phrase))) {
-        return command;
-      }
-    }
-  }
-  
+// Hindi action detection
+function detectHindiAction(text: string): string | null {
+  const t = text.toLowerCase().trim();
+  // Delete
+  if (/हटा|डिलीट|remove|निकाल/.test(t)) return 'delete';
+  // Create/Add
+  if (/नया|नया.*बनाओ|ऐड|add|जोड़|शामिल|create/.test(t)) return 'create';
+  // Update
+  if (/अपडेट|बदल|modify|update|बदलाव|संपादन|edit/.test(t)) return 'update';
+  // Search/Find
+  if (/सर्च|खोज|search|find|ढूंढ|दिखाओ|show|देखो/.test(t)) return 'search';
+  // Read
+  if (/पढ़|read|बताओ|tell|सुनाओ|क्या/.test(t)) return 'read';
+  // Submit
+  if (/सबमिट|submit|जमा|send/.test(t)) return 'submit';
+  // Fill
+  if (/भर|fill|सेट|set|डाल/.test(t)) return 'fill';
+  // Click
+  if (/क्लिक|click|दबा/.test(t)) return 'click';
+  // Navigate
+  if (/जाओ|go|navigate|open|खोल|ले चलो|take.*to|ले चल|visit/.test(t)) return 'navigate';
   return null;
 }
+
+// Entity type detection (bilingual)
+function detectEntityType(text: string): string | null {
+  const lower = text.toLowerCase();
+  if (/doctor|डॉक्टर|physician|डाक्टर/.test(lower)) return 'doctor';
+  if (/pharmacy|फार्मेसी|chemist|medical\s*hall|केमिस्ट/.test(lower)) return 'pharmacy';
+  if (/hospital|अस्पताल|हॉस्पिटल|clinic|क्लिनिक|नर्सिंग होम/.test(lower)) return 'hospital';
+  if (/\bmr\b|medical\s*representative|प्रतिनिधि|mr\s*repr|medrep/.test(lower)) return 'mr';
+  if (/product|प्रोडक्ट|उत्पाद|product|item/.test(lower)) return 'product';
+  if (/sale|सेल्स|बिक्री|revenue|order/.test(lower)) return 'sale';
+  if (/expense|खर्च|expense|cost|बिल|लागत/.test(lower)) return 'expense';
+  if (/lead|लीड/.test(lower)) return 'lead';
+  if (/visit|विजिट/.test(lower)) return 'visit';
+  return null;
+}
+
+// Entity names for speech (bilingual)
+const ENTITY_NAMES: Record<string, { en: string; hi: string }> = {
+  doctor: { en: 'doctor', hi: 'डॉक्टर' },
+  pharmacy: { en: 'pharmacy', hi: 'फार्मेसी' },
+  hospital: { en: 'hospital', hi: 'अस्पताल' },
+  mr: { en: 'MR', hi: 'एमआर' },
+  product: { en: 'product', hi: 'प्रोडक्ट' },
+  sale: { en: 'sale', hi: 'सेल्स' },
+  expense: { en: 'expense', hi: 'खर्च' },
+  lead: { en: 'lead', hi: 'लीड' },
+  visit: { en: 'visit', hi: 'विजिट' },
+};
+
+// API path mapping for entities
+function entityToApiPath(type: string): string {
+  const map: Record<string, string> = {
+    doctor: 'doctors',
+    pharmacy: 'pharmacies',
+    hospital: 'hospitals',
+    mr: 'mrs',
+    product: 'products',
+    sale: 'sales',
+    expense: 'expenses',
+    lead: 'leads',
+    visit: 'visits',
+  };
+  return map[type] || '';
+}
+
+// Entity to page route
+function entityToRoute(type: string): string {
+  const map: Record<string, string> = {
+    doctor: '/directory',
+    pharmacy: '/directory',
+    hospital: '/directory',
+    mr: '/mrs',
+    product: '/products',
+    sale: '/sales',
+    expense: '/expenses',
+    lead: '/leads',
+    visit: '/schedule',
+  };
+  return map[type] || '/';
+}
+
+// Extract name from command after entity keywords
+function extractName(text: string, entityType: string): string {
+  const lower = text.toLowerCase();
+  const keywords = [
+    'doctor', 'pharmacy', 'hospital', 'mr', 'medical representative',
+    'product', 'sale', 'expense', 'lead', 'visit',
+    'doctor named', 'pharmacy named', 'hospital named', 'mr named',
+    'डॉक्टर', 'फार्मेसी', 'अस्पताल', 'प्रोडक्ट', 'उत्पाद',
+    'named', 'called', 'जिसका नाम', 'नाम', 'है', 'the',
+    'delete', 'remove', 'हटा', 'डिलीट', 'create', 'new',
+    'add', 'नया', 'ऐड', 'जोड़', 'update', 'बदल',
+    'show', 'find', 'search', 'खोज', 'दिखाओ',
+    'for', 'का', 'की', 'को', 'में', 'से',
+    'how', 'many', 'much', 'total', 'कितने', 'कितनी',
+  ];
+
+  let name = lower;
+  for (const kw of keywords) {
+    const regex = new RegExp(kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    name = name.replace(regex, '');
+  }
+
+  return name.replace(/^[\s,:;"'\-]+|[\s,:;"'\-]+$/g, '').replace(/^[,.\-]+|[,.\-]+$/g, '').trim();
+}
+
+// Detect Hindi/Devanagari
+const isHindi = (text: string): boolean => /[\u0900-\u097F]/.test(text);
 
 export default function VoiceAssistant({ onCommand, onNavigate }: VoiceAssistantProps) {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [transcript, setTranscript] = useState('');
-  const [feedback, setFeedback] = useState('Click mic to start speaking');
-  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [feedback, setFeedback] = useState('');
+  const [voiceEnabled] = useState(true);
+  const [showPanel, setShowPanel] = useState(false);
   const recognitionRef = useRef<any>(null);
-  const synthRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const feedbackTimeoutRef = useRef<number | null>(null);
 
-  // Initialize Speech Recognition
+  const setFeedbackTemp = useCallback((text: string, duration = 3000) => {
+    if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+    setFeedback(text);
+    feedbackTimeoutRef.current = window.setTimeout(() => setFeedback(''), duration);
+  }, []);
+
+  // Bilingual speech
+  const speak = useCallback((text: string) => {
+    if (!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.rate = 1;
+    utterance.pitch = 1;
+    utterance.volume = 0.7;
+
+    if (isHindi(text)) {
+      utterance.lang = 'hi-IN';
+      const voices = window.speechSynthesis.getVoices();
+      const hiVoice = voices.find(v => v.lang.startsWith('hi'));
+      if (hiVoice) utterance.voice = hiVoice;
+    } else {
+      utterance.lang = 'en-IN';
+    }
+
+    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+
+    window.speechSynthesis.speak(utterance);
+  }, []);
+
+  // Unified command parser
+  const processCommand = useCallback((command: string) => {
+    console.log('[Voice] Command:', command);
+
+    const isHindiInput = isHindi(command);
+    const action = detectHindiAction(command);
+    const entityType = detectEntityType(command);
+    const extractedName = entityType ? extractName(command, entityType) : '';
+
+    // ==== READ COMMANDS ====
+    if (
+      command.includes('read') || command.includes('पढ़') ||
+      (/tell/i.test(command) && /me/i.test(command)) ||
+      (/बता/i.test(command)) || (/सुना/i.test(command)) ||
+      /what\s+(is|are)/i.test(command) || /क्या\s*है/i.test(command)
+    ) {
+      if (command.includes('form')) {
+        speak(getFormSummary());
+        setFeedbackTemp('📋 Forms read');
+      } else if (command.includes('table')) {
+        speak(readTableData());
+        setFeedbackTemp('📊 Table read');
+      } else if (command.includes('field') || command.includes('value') || command.includes('क्षेत्र')) {
+        const values = getCurrentFormValues();
+        const entries = Object.entries(values).slice(0, 5);
+        speak(`${entries.length} fields: ${entries.map(([k, v]) => `${k} is ${v}`).join(', ')}`);
+        setFeedbackTemp('📋 Field values read');
+      } else {
+        const content = readPageContent('summary');
+        speak(content);
+        setFeedbackTemp('📄 Page read');
+      }
+      return;
+    }
+
+    // ==== HELP ====
+    if (command.includes('help') || command.includes('मदद') || command.includes('कैसे') || command.includes('क्या कर')) {
+      const help = isHindiInput
+        ? 'मैं ये कर सकता हूँ: डैशबोर्ड जाओ, डॉक्टर सर्च करो, ABC फार्मेसी हटाओ, फॉर्म भर, सबमिट करो, पेज पढ़ो'
+        : 'I can: navigate pages, search entities, delete by name, fill forms, submit, count items, read page. Try: "go to sales", "delete pharmacy ABC", "how many doctors"';
+      speak(help);
+      setFeedbackTemp('📋 Command help');
+      return;
+    }
+
+    // ==== DELETE ====
+    const isDelete = (
+      (action === 'delete' && entityType) ||
+      /(delete|remove|hata|डिलीट|हटा|निकाल)\s+(the\s+)?(?:doctor|pharmacy|hospital|mr|डॉक्टर|फार्मेसी|अस्पताल)/i.test(command)
+    );
+
+    if (isDelete && entityType && extractedName) {
+      const apiPath = entityToApiPath(entityType);
+      const hi = ENTITY_NAMES[entityType] || { en: entityType, hi: entityType };
+      const enName = hi.en;
+      const hiName = hi.hi;
+
+      deleteEntityByName(entityType as any, extractedName).then(result => {
+        if (result.success) {
+          if (isHindiInput) {
+            speak(`${hiName} "${extractedName}" सफलतापूर्वक हटा दिया गया`);
+          } else {
+            speak(`Successfully deleted ${enName} ${extractedName}`);
+          }
+          setFeedbackTemp(`🗑️ Deleted ${enName}: ${extractedName}`);
+        } else {
+          if (isHindiInput) {
+            speak(`${hiName} "${extractedName}" नहीं मिला या हटाने में एरर`);
+          } else {
+            speak(`Could not find or delete ${enName} ${extractedName}`);
+          }
+          setFeedbackTemp(`❌ ${enName} not found`);
+        }
+      }).catch(err => {
+        console.error('[Voice] Delete error:', err);
+        speak(isHindiInput ? 'डिलीट में एरर आया' : 'Error deleting entity');
+        setFeedbackTemp('❌ Deletion failed');
+      });
+      return;
+    }
+
+    // ==== NAVIGATION ====
+    // English navigation
+    const cleanText = command
+      .replace(/^(show\s*me|take\s*me\s*to|go\s*to|go|open|navigate\s*to|navigate|visit|bring\s*up|जाओ|ले\s*चलो|नैविगेट|खोल)\s*/i, '')
+      .trim();
+
+    for (const [pattern, path] of Object.entries(NAV_MAP)) {
+      if (new RegExp(pattern, 'i').test(cleanText)) {
+        onNavigate(path);
+        const name = isHindiInput ? HINDI_PAGE_NAMES[path] || path : PAGE_NAMES[path] || path;
+        speak(isHindiInput ? `${name} जा रहे हैं` : `Going to ${name}`);
+        setFeedbackTemp(`→ ${name}`);
+        return;
+      }
+    }
+
+    // Hindi navigation
+    if (isHindiInput) {
+      for (const [pattern, path] of HINDI_NAV_MAP) {
+        if (pattern.test(command)) {
+          onNavigate(path);
+          const name = HINDI_PAGE_NAMES[path] || path;
+          speak(`${name} जा रहे हैं`);
+          setFeedbackTemp(`→ ${name}`);
+          return;
+        }
+      }
+    }
+
+    // ==== COUNT / "HOW MANY" ====
+    if (/how\s*many|कितने|कितनी|total.*count|गिनती|कुल/i.test(command)) {
+      if (entityType) {
+        const apiPath = entityToApiPath(entityType);
+        const hi = ENTITY_NAMES[entityType]!;
+        const countPhrase = isHindiInput
+          ? `${apiPath} की गिनती बताओ`
+          : `total ${entityType} count summary`;
+
+        // Open search and also try AI search
+        onCommand('open-search');
+        const spokenQuery = isHindiInput
+          ? `${apiPath} कितने ${entityType || ''}`
+          : `how many ${entityType}`;
+
+        speak(isHindiInput ? `सर्च कर रहा हूँ ${hi.hi} की संख्या` : `Searching for ${hi.en} count`);
+        setFeedbackTemp(`🔍 Counting ${hi.en}...`);
+
+        setTimeout(() => {
+          const searchInput = document.querySelector(
+            'input[placeholder*="Searcheverything"], input[placeholder*="Ask anything"]'
+          ) as HTMLInputElement;
+          if (searchInput) {
+            const setter = Object.getOwnPropertyDescriptor(
+              window.HTMLInputElement.prototype,
+              'value'
+            )?.set;
+            if (setter) setter.call(searchInput, spokenQuery);
+            else searchInput.value = spokenQuery;
+            searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+            searchInput.dispatchEvent(new Event('change', { bubbles: true }));
+            searchInput.focus();
+          }
+        }, 500);
+
+        // Also try AI search for the spoken answer
+        (async () => {
+          try {
+            const res = await fetch('/api/ai-search', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ query: `How many ${entityType} are there? Give me a count.` }),
+            });
+            if (res.ok) {
+              const data = await res.json();
+              if (data.answer) {
+                setTimeout(() => speak(data.answer), 2000);
+              }
+            }
+          } catch { /* silent */ }
+        })();
+
+        return;
+      }
+    }
+
+    // ==== FILL FORM ====
+    if (
+      action === 'fill' ||
+      /fill|set\s+.*\s+to\b|सेट\s+\S+\s+को/i.test(command)
+    ) {
+      const match = command.match(/(?:fill|set)\s+(.+?)\s+(?:with|to|को|में)\s+(.+?)(?:\.|$)/i) ||
+                    command.match(/(?:भर|set)\s+(.+?)\s+(.+?)(?:\.|$)/i);
+      if (match && match.length >= 3) {
+        const field = match[1].trim();
+        const value = match[2].trim();
+        const success = fillFormField(field, value);
+        if (success) {
+          speak(isHindiInput ? `${field} में ${value} भर दिया` : `Set ${field} to ${value}`);
+          setFeedbackTemp(`✓ ${field} = ${value}`);
+        } else {
+          speak(isHindiInput ? `फ़ील्ड ${field} नहीं मिला` : `Could not find field ${field}`);
+          setFeedbackTemp(`❌ Field not found`);
+        }
+        return;
+      }
+    }
+
+    // ==== SUBMIT ====
+    if (action === 'submit' || command.includes('submit') || command.includes('जमा') || command.includes('सबमिट')) {
+      const success = submitNearestForm();
+      speak(success ? (isHindiInput ? 'फॉर्म सबमिट हो गया' : 'Form submitted') : (isHindiInput ? 'कोई फॉर्म नहीं मिला' : 'No form found to submit'));
+      setFeedbackTemp(success ? '✓ Submitted' : '❌ No form');
+      return;
+    }
+
+    // ==== CLICK ====
+    if (action === 'click' || /click\s+/i.test(command) || /क्लिक/i.test(command)) {
+      const btnMatch = command.match(/(?:click|क्लिक)\s+(.+?)(?:\.|$)/i);
+      if (btnMatch) {
+        const btnName = btnMatch[1].trim();
+        const success = clickButtonByText(btnName);
+        speak(success ? (isHindiInput ? `${btnName} क्लिक किया` : `Clicked ${btnName}`) : (isHindiInput ? `${btnName} नहीं मिला` : `Could not find ${btnName}`));
+        setFeedbackTemp(success ? `✓ Clicked ${btnName}` : `❌ Not found`);
+      }
+      return;
+    }
+
+    // ==== CLOSE ====
+    if (command.includes('close') || command.includes('dismiss') || command.includes('बंद')) {
+      onCommand('close-search');
+      speak(isHindiInput ? 'बंद किया' : 'Closed');
+      setFeedbackTemp('✓ Closed');
+      return;
+    }
+
+    // ==== ENTITY-SPECIFIC CREATE/UPDATE (navigate to relevant page) ====
+    if ((action === 'create' || action === 'update') && entityType) {
+      const route = entityToRoute(entityType);
+      if (route) {
+        onNavigate(route);
+        const hi = ENTITY_NAMES[entityType]!;
+        const pageName = isHindiInput ? HINDI_PAGE_NAMES[route] || route : PAGE_NAMES[route] || route;
+        if (action === 'create') {
+          speak(isHindiInput ? `${hi.hi} पेज जा रहे हैं नया बनाने के लिए` : `Going to ${pageName} to create new ${hi.en}`);
+          setFeedbackTemp(`+ Create ${hi.en} → ${pageName}`);
+        } else {
+          speak(isHindiInput ? `${hi.hi} पेज जा रहे हैं अपडेट करने के लिए` : `Going to ${pageName} to update ${hi.en}`);
+          setFeedbackTemp(`✏️ Update ${hi.en} → ${pageName}`);
+        }
+        return;
+      }
+    }
+
+    // ==== SEARCH (AI-powered) ====
+    const isSearch = (
+      action === 'search' ||
+      /search|find|show|look|tell\s+me\s+about|kya\s+hai|dikhao|ढूंढ|खोज|सर्च|दिखाओ|बताओ|में/i.test(command)
+    );
+
+    if (isSearch && command.length > 2) {
+      const searchTerm = cleanText || command;
+      onCommand('open-search');
+      speak(isHindiInput ? `सर्च कर रहा हूँ` : `Searching for ${searchTerm}`);
+      setFeedbackTemp(`🔍 Searching...`);
+
+      setTimeout(() => {
+        const searchInput = document.querySelector(
+          'input[placeholder*="Searcheverything"], input[placeholder*="Ask anything"]'
+        ) as HTMLInputElement;
+        if (searchInput) {
+          const setter = Object.getOwnPropertyDescriptor(
+            window.HTMLInputElement.prototype,
+            'value'
+          )?.set;
+          if (setter) setter.call(searchInput, searchTerm);
+          else searchInput.value = searchTerm;
+          searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+          searchInput.dispatchEvent(new Event('change', { bubbles: true }));
+          searchInput.focus();
+        }
+      }, 500);
+
+      // Also trigger AI search, speak answer
+      (async () => {
+        const result = await searchAndNavigate(searchTerm, () => {}, () => {});
+        if (result?.answer) {
+          setTimeout(() => speak(result.answer!), 3000);
+          setFeedbackTemp('🤖 AI Answer ready', 8000);
+        }
+      })();
+
+      return;
+    }
+
+    // ==== DEFAULT: open global search with full command ====
+    if (command.length > 2) {
+      onCommand('open-search');
+      setFeedbackTemp(`🔍 Searching: "${command}"`);
+      setTimeout(() => {
+        const searchInput = document.querySelector(
+          'input[placeholder*="Searcheverything"], input[placeholder*="Ask anything"]'
+        ) as HTMLInputElement;
+        if (searchInput) {
+          const setter = Object.getOwnPropertyDescriptor(
+            window.HTMLInputElement.prototype,
+            'value'
+          )?.set;
+          if (setter) setter.call(searchInput, command);
+          else searchInput.value = command;
+          searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+          searchInput.dispatchEvent(new Event('change', { bubbles: true }));
+          searchInput.focus();
+        }
+      }, 500);
+      speak(isHindiInput ? `सर्च कर रहा हूँ` : `Searching: ${command}`);
+
+      (async () => {
+        const result = await searchAndNavigate(command, () => {}, () => {});
+        if (result?.answer) {
+          setTimeout(() => speak(result.answer!), 3000);
+        }
+      })();
+
+      return;
+    }
+
+    // Unrecognized
+    speak(isHindiInput ? 'समझ नहीं आया, मदद कहिये' : "I didn't understand. Try help for commands.");
+    setFeedbackTemp('❓ Say "help" for commands');
+  }, [onCommand, onNavigate, speak, setFeedbackTemp]);
+
+  // Speech Recognition Setup
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      setFeedback('❌ Speech recognition not supported in this browser');
+      setFeedbackTemp('❌ Speech not supported');
       return;
     }
 
     recognitionRef.current = new SpeechRecognition();
     recognitionRef.current.continuous = false;
     recognitionRef.current.interimResults = true;
+    recognitionRef.current.lang = 'en-IN';
 
     recognitionRef.current.onstart = () => {
       setIsListening(true);
-      setFeedback('🎤 Listening... speak now');
-      console.log('[Voice] Recognition started');
+      setShowPanel(true);
+      setFeedback('🎤 Listening...');
     };
 
     recognitionRef.current.onresult = (event: any) => {
       let interim = '';
       let final = '';
-      
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
+        const t = event.results[i][0].transcript;
         if (event.results[i].isFinal) {
-          final += transcript + ' ';
+          final += t + ' ';
         } else {
-          interim += transcript;
+          interim += t;
         }
       }
-
-      const current = (final || interim).trim().toLowerCase();
-      setTranscript(current);
-
+      setTranscript(final || interim);
       if (final) {
-        processCommand(final.trim().toLowerCase());
+        processCommand(final.trim());
       }
     };
 
     recognitionRef.current.onerror = (event: any) => {
       console.error('[Voice] Error:', event.error);
-      setFeedback(`⚠️ Error: ${event.error}`);
+      setFeedbackTemp(`⚠️ ${event.error}`);
       setIsListening(false);
     };
 
     recognitionRef.current.onend = () => {
       setIsListening(false);
-      console.log('[Voice] Recognition ended');
+      setShowPanel(false);
+      setTranscript('');
     };
 
     return () => {
-      if (recognitionRef.current) {
-        recognitionRef.current.abort();
-      }
+      if (recognitionRef.current) recognitionRef.current.abort();
     };
-  }, []);
-
-  const processCommand = (command: string) => {
-    console.log('[Voice] Processing command:', command);
-    
-    // Handle help command first
-    if (command.includes('help')) {
-      const helpText = 'You can navigate to Dashboard, Sales, Expenses, Healthcare Directory, or other pages. ' +
-        'Search current page by saying "Search for AIG Hospital". ' +
-        'Search entire app by saying "Global search for doctor" or "Search everywhere for Apollo". ' +
-        'Read the current page by saying "Read page". ' +
-        'Fill forms by saying "Fill name field with John". ' +
-        'Submit by saying "Submit". ' +
-        'Click buttons by saying "Click Save".';
-      speak(helpText);
-      setFeedback('📋 Help: Navigation, global search, page search, forms available');
-      return;
-    }
-
-    // Handle compound commands like "in the healthcare directory, search for apollo"
-    // Check for search within a location first
-    const compoundSearchMatch = command.match(/(?:in|at|on)\s+(?:the\s+)?(healthcare|directory|doctor|hospital|sales|expense|product)\s+(?:directory\s+)?,?(?:\s+)?(?:search\s+(?:for\s+)?|find\s+)(.+?)(?:\.|$)/i);
-    if (compoundSearchMatch) {
-      const location = compoundSearchMatch[1].toLowerCase();
-      const searchTerm = compoundSearchMatch[2].trim();
-      console.log('[Voice] Compound command detected - Location:', location, 'Search:', searchTerm);
-      
-      // Navigate first
-      let path = '/directory';
-      if (location.includes('sale')) path = '/sales';
-      else if (location.includes('expense')) path = '/expenses';
-      else if (location.includes('product')) path = '/products';
-      
-      onNavigate(path);
-      speak(`Going to ${location} directory and searching for ${searchTerm}`);
-      setFeedback(`🔍 Going to ${location}, searching: "${searchTerm}"`);
-      
-      // Wait for navigation then search
-      setTimeout(() => {
-        const searchInput = document.querySelector('#healthcare-search-input, input[type="search"], input[data-search-input], input[placeholder*="search" i]') as HTMLInputElement;
-        if (searchInput) {
-          const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-          if (nativeInputValueSetter) {
-            nativeInputValueSetter.call(searchInput, searchTerm);
-          } else {
-            searchInput.value = searchTerm;
-          }
-          searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-          searchInput.dispatchEvent(new Event('change', { bubbles: true }));
-          searchInput.focus();
-        }
-      }, 800);
-      return;
-    }
-
-    // Check for form/data operations first (higher priority)
-    if (command.includes('read') || (command.includes('tell me') || command.includes('show me')) && (command.includes('form') || command.includes('data') || command.includes('page') || command.includes('table') || command.includes('metric'))) {
-      handleReadCommand(command);
-      return;
-    }
-
-    if (command.includes('fill') || command.includes('set') || command.includes('enter')) {
-      handleFormCommand(command);
-      return;
-    }
-
-    if (command.includes('submit') || command.includes('send') || command.includes('confirm')) {
-      const success = submitNearestForm();
-      if (success) {
-        speak('Form submitted successfully');
-        setFeedback('✓ Form submitted');
-      } else {
-        speak('No form found to submit');
-        setFeedback('❌ No form to submit');
-      }
-      return;
-    }
-
-    if (command.includes('click') || command.includes('button')) {
-      const clickMatch = command.match(/click\s+(.+?)(?:\.|$)/i) || command.match(/button\s+(.+?)(?:\.|$)/i);
-      if (clickMatch) {
-        const buttonName = clickMatch[1].trim();
-        const success = clickButtonByText(buttonName);
-        if (success) {
-          speak(`Clicked ${buttonName}`);
-          setFeedback(`✓ Clicked: ${buttonName}`);
-        } else {
-          speak(`Could not find button ${buttonName}`);
-          setFeedback(`❌ Button not found: ${buttonName}`);
-        }
-      }
-      return;
-    }
-
-    // Handle global search commands - "search everywhere", "global search", "find in app"
-    const globalSearchMatch = command.match(/(?:global\s+search|search\s+(?:everywhere|all|app|application)|find\s+(?:everywhere|all|in\s+app))\s+(?:for\s+)?(.+?)(?:\.|$)/i);
-    if (globalSearchMatch) {
-      const searchTerm = globalSearchMatch[1].trim();
-      console.log('[Voice] Global search command detected:', searchTerm);
-      
-      onCommand('open-search');
-      speak(`Searching everywhere for ${searchTerm}`);
-      setFeedback(`🔍 Global search: "${searchTerm}"`);
-      
-      // Wait for modal to open then fill search
-      setTimeout(() => {
-        const globalSearchInput = document.querySelector('input[placeholder*="Search everything"], input[type="search"]') as HTMLInputElement;
-        if (globalSearchInput) {
-          const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-          if (nativeInputValueSetter) {
-            nativeInputValueSetter.call(globalSearchInput, searchTerm);
-          } else {
-            globalSearchInput.value = searchTerm;
-          }
-          globalSearchInput.dispatchEvent(new Event('input', { bubbles: true }));
-          globalSearchInput.focus();
-        }
-      }, 400);
-      return;
-    }
-
-    // Handle search commands: "search for [term]" or "find [term]"
-    const searchMatch = command.match(/(?:search\s+(?:for\s+)?|find\s+)(.+?)(?:\s+(?:in|on|at)\s+.*)?(?:\.|$)/i);
-    if (searchMatch) {
-      const searchTerm = searchMatch[1].trim();
-      console.log('[Voice] Search command detected:', searchTerm);
-      
-      // Try to find and fill search input - look for specific healthcare search first
-      const searchInput = document.querySelector('#healthcare-search-input, input[type="search"], input[data-search-input], input[placeholder*="search" i]') as HTMLInputElement;
-      
-      if (searchInput) {
-        // Set value and trigger React onChange
-        const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-        if (nativeInputValueSetter) {
-          nativeInputValueSetter.call(searchInput, searchTerm);
-        } else {
-          searchInput.value = searchTerm;
-        }
-        
-        // Dispatch events to trigger React state update
-        searchInput.dispatchEvent(new Event('input', { bubbles: true }));
-        searchInput.dispatchEvent(new Event('change', { bubbles: true }));
-        
-        // Focus the input
-        searchInput.focus();
-        
-        speak(`Searching for ${searchTerm}`);
-        setFeedback(`🔍 Searching: "${searchTerm}"`);
-      } else {
-        // Fallback: try to use the global search
-        onCommand('open-search');
-        setTimeout(() => {
-          const globalSearchInput = document.querySelector('input[placeholder*="Search everything"], input[type="search"]') as HTMLInputElement;
-          if (globalSearchInput) {
-            const nativeInputValueSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-            if (nativeInputValueSetter) {
-              nativeInputValueSetter.call(globalSearchInput, searchTerm);
-            } else {
-              globalSearchInput.value = searchTerm;
-            }
-            globalSearchInput.dispatchEvent(new Event('input', { bubbles: true }));
-            globalSearchInput.focus();
-          }
-        }, 400);
-        speak(`Opening search for ${searchTerm}`);
-        setFeedback(`🔍 Global search: "${searchTerm}"`);
-      }
-      return;
-    }
-
-    if (command.includes('clear') || command.includes('reset')) {
-      const forms = getAllForms();
-      if (forms.length > 0) {
-        forms.forEach(form => {
-          form.fields.forEach(field => {
-            fillFormField(field.name, '');
-          });
-        });
-        speak('Form cleared');
-        setFeedback('✓ Form cleared');
-      } else {
-        speak('No form found');
-        setFeedback('❌ No form to clear');
-      }
-      return;
-    }
-
-    // Extract the actual intent from the full sentence
-    const intent = extractIntent(command);
-    console.log('[Voice] Extracted intent:', intent);
-
-    // Find matching command for navigation
-    const matchedCommand = findCommand(intent);
-    
-    if (matchedCommand) {
-      console.log('[Voice] Matched command:', matchedCommand);
-      
-      if (matchedCommand === 'search') {
-        onCommand('open-search');
-        speak('Opening search');
-        setFeedback('🔍 Search opened');
-      } else if (matchedCommand === 'close-search') {
-        onCommand('close-search');
-        speak('Closing search');
-        setFeedback('✓ Search closed');
-      } else {
-        // Navigation command
-        const pageName = matchedCommand === '/' ? 'Dashboard' : matchedCommand.replace(/\//g, '').replace(/-/g, ' ');
-        onNavigate(matchedCommand);
-        speak(`Navigating to ${pageName}`);
-        setFeedback(`✓ Going to ${pageName}`);
-      }
-    } else {
-      // Command not recognized - provide helpful feedback
-      console.log('[Voice] No matching command found');
-      speak(`I didn't recognize that command. Try "Read page", "Go to sales", or "Fill name with John"`);
-      setFeedback(`❌ Didn't understand: "${command}"`);
-    }
-  };
-
-  const handleReadCommand = (command: string) => {
-    console.log('[Voice] Reading command:', command);
-    
-    if (command.includes('form')) {
-      const formSummary = getFormSummary();
-      const values = getCurrentFormValues();
-      const valuesText = Object.entries(values)
-        .map(([k, v]) => `${k}: ${v}`)
-        .join('. ');
-      const fullText = `${formSummary}. Current values: ${valuesText}`;
-      speak(fullText);
-      setFeedback(`📋 Forms: ${formSummary}`);
-    } else if (command.includes('table') || command.includes('data')) {
-      const tableData = readTableData(0);
-      speak(tableData);
-      setFeedback(`📊 ${tableData}`);
-    } else if (command.includes('metric') || command.includes('stat')) {
-      const metrics = readPageContent('metrics');
-      speak(metrics || 'No metrics available on this page');
-      setFeedback(`📈 ${metrics}`);
-    } else {
-      // Default: read page summary
-      const pageContent = readPageContent('summary');
-      speak(pageContent);
-      setFeedback(`📄 ${pageContent.substring(0, 100)}...`);
-    }
-  };
-
-  const handleFormCommand = (command: string) => {
-    console.log('[Voice] Form command:', command);
-    
-    // Parse form field and value: "fill [field] with [value]"
-    const withMatch = command.match(/fill\s+(.+?)\s+with\s+(.+?)(?:\.|$)/i) ||
-                      command.match(/set\s+(.+?)\s+to\s+(.+?)(?:\.|$)/i) ||
-                      command.match(/enter\s+(.+?)\s+in\s+(.+?)(?:\.|$)/i) ||
-                      command.match(/add\s+(.+?)\s+(?:as\s+)?(.+?)(?:\.|$)/i);
-    
-    if (withMatch) {
-      let fieldName = withMatch[1].trim();
-      let value = withMatch[2].trim();
-      
-      // Swap if order is reversed ("enter in [field] [value]")
-      if (command.includes('enter') && command.includes('in')) {
-        [fieldName, value] = [value, fieldName];
-      }
-      
-      console.log(`[Voice] Attempting to fill "${fieldName}" with "${value}"`);
-      
-      // Get all forms for context
-      const forms = getAllForms();
-      console.log(`[Voice] Found ${forms.length} form(s) on page`);
-      
-      if (forms.length === 0) {
-        speak('No form found on this page');
-        setFeedback('❌ No form to fill');
-        return;
-      }
-      
-      // Try to fill the field
-      let success = fillFormField(fieldName, value);
-      
-      if (success) {
-        speak(`Successfully set ${fieldName} to ${value}`);
-        setFeedback(`✓ Set ${fieldName} = ${value}`);
-        
-        // Update displayed form values
-        setTimeout(() => {
-          const updatedValues = getCurrentFormValues();
-          console.log('[Voice] Updated form values:', updatedValues);
-        }, 100);
-        
-        return;
-      }
-      
-      // If direct fill failed, try fuzzy matching
-      console.log('[Voice] Direct fill failed, trying fuzzy match...');
-      let foundField = false;
-      
-      for (const form of forms) {
-        for (const field of form.fields) {
-          const fieldLower = field.label.toLowerCase();
-          const nameLower = fieldName.toLowerCase();
-          
-          // Fuzzy matching logic
-          if (fieldLower.includes(nameLower) || nameLower.includes(fieldLower.split(' ')[0])) {
-            console.log(`[Voice] Fuzzy matched: "${field.label}" for "${fieldName}"`);
-            const fillSuccess = fillFormField(field.name, value);
-            
-            if (fillSuccess) {
-              speak(`Set ${field.label} to ${value}`);
-              setFeedback(`✓ Set ${field.label} = ${value}`);
-              foundField = true;
-              break;
-            }
-          }
-        }
-        if (foundField) break;
-      }
-      
-      if (!foundField) {
-        // Show what fields are available
-        const availableFields = forms
-          .flatMap(f => f.fields.map(fld => fld.label))
-          .slice(0, 5)
-          .join(', ');
-        
-        const message = `Could not find field "${fieldName}". Available fields: ${availableFields}`;
-        speak(message);
-        setFeedback(`❌ Field "${fieldName}" not found. Try: ${availableFields}`);
-      }
-    } else {
-      speak('Please specify field and value. Say "fill amount with 5000"');
-      setFeedback('❓ Usage: "fill [field] with [value]"');
-    }
-  };
-
-  const speak = (text: string) => {
-    if (!voiceEnabled || !('speechSynthesis' in window)) {
-      return;
-    }
-
-    window.speechSynthesis.cancel();
-    
-    synthRef.current = new SpeechSynthesisUtterance(text);
-    synthRef.current.rate = 1;
-    synthRef.current.pitch = 1;
-    synthRef.current.volume = 0.7;
-    
-    synthRef.current.onstart = () => setIsSpeaking(true);
-    synthRef.current.onend = () => setIsSpeaking(false);
-
-    window.speechSynthesis.speak(synthRef.current);
-  };
+  }, [processCommand, setFeedbackTemp]);
 
   const startListening = () => {
-    if (recognitionRef.current) {
+    if (recognitionRef.current && !isListening && !isSpeaking) {
       setTranscript('');
-      recognitionRef.current.start();
+      try {
+        recognitionRef.current.start();
+      } catch {
+        recognitionRef.current.abort();
+        recognitionRef.current.start();
+      }
     }
   };
 
@@ -525,131 +629,86 @@ export default function VoiceAssistant({ onCommand, onNavigate }: VoiceAssistant
   return (
     <div style={{
       position: 'fixed',
-      bottom: '20px',
-      right: '20px',
+      bottom: '16px',
+      right: '16px',
       zIndex: 1000,
       fontFamily: 'Arial, sans-serif',
     }}>
-      {/* Voice Panel */}
-      <div style={{
-        backgroundColor: isListening ? '#1e40af' : isSpeaking ? '#7c3aed' : '#374151',
-        borderRadius: '12px',
-        padding: '16px',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-        color: 'white',
-        minWidth: '280px',
-        marginBottom: '12px',
-        animation: isListening ? 'pulse 1s infinite' : 'none',
-      }}>
-        <style>{`
-          @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.7; }
-          }
-        `}</style>
+      {/* Feedback Toast */}
+      {feedback && (
+        <div style={{
+          position: 'absolute',
+          bottom: '44px',
+          right: 0,
+          background: isListening ? '#1e40af' : '#374151',
+          color: 'white',
+          padding: '4px 10px',
+          borderRadius: '6px',
+          fontSize: '11px',
+          whiteSpace: 'nowrap',
+          maxWidth: '250px',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+          animation: 'fadeIn 0.2s ease',
+        }}>
+          {feedback}
+        </div>
+      )}
 
-        <div style={{ marginBottom: '12px' }}>
-          <div style={{ fontSize: '12px', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            {isListening ? '🎤 Listening...' : isSpeaking ? '🔊 Speaking...' : '🎙️ Voice Assistant'}
+      {/* Compact Panel when listening */}
+      {showPanel && isListening && (
+        <div style={{
+          backgroundColor: '#1e40af',
+          borderRadius: '8px',
+          padding: '6px 12px',
+          marginBottom: '6px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+          color: 'white',
+          animation: 'pulse 1s infinite',
+          width: '160px',
+          fontSize: '11px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', animation: 'pulse 1s infinite' }} />
+            <span>Listening...</span>
           </div>
-          <div style={{ fontSize: '13px', marginTop: '4px' }}>
-            {transcript || feedback}
-          </div>
+          {transcript && (
+            <div style={{ fontSize: '10px', color: '#60a5fa', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              "{transcript}"
+            </div>
+          )}
         </div>
+      )}
 
-        {/* Control Buttons */}
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <button
-            onClick={isListening ? stopListening : startListening}
-            style={{
-              flex: 1,
-              padding: '8px 12px',
-              backgroundColor: isListening ? '#ef4444' : '#3b82f6',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '12px',
-              fontWeight: '600',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px',
-              transition: 'background-color 0.2s',
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.opacity = '0.9';
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.opacity = '1';
-            }}
-          >
-            {isListening ? (
-              <>
-                <MicOff size={14} /> Stop
-              </>
-            ) : (
-              <>
-                <Mic size={14} /> Start
-              </>
-            )}
-          </button>
-
-          <button
-            onClick={() => setVoiceEnabled(!voiceEnabled)}
-            style={{
-              padding: '8px 12px',
-              backgroundColor: voiceEnabled ? '#10b981' : '#6b7280',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '12px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '4px',
-            }}
-            title={voiceEnabled ? 'Voice feedback on' : 'Voice feedback off'}
-          >
-            {voiceEnabled ? <Volume2 size={14} /> : <VolumeX size={14} />}
-          </button>
-        </div>
-
-        {/* Help Tips */}
-        <div style={{ fontSize: '11px', marginTop: '12px', color: '#d1d5db', lineHeight: '1.4' }}>
-          <div style={{ fontWeight: '600', marginBottom: '4px' }}>Try saying:</div>
-          <div>• "Show me the dashboard" • "Read page"</div>
-          <div>• "Fill name with John" • "Submit"</div>
-          <div>• "Click save button" • "Read forms"</div>
-          <div>• "Read table data" • "Show metrics"</div>
-        </div>
-      </div>
-
-      {/* Floating Mic Button */}
+      {/* Compact Mic Button (32px) */}
       <button
-        onClick={startListening}
-        disabled={isListening || isSpeaking}
+        onClick={isListening ? stopListening : startListening}
+        disabled={isSpeaking}
         style={{
-          width: '56px',
-          height: '56px',
+          width: '32px',
+          height: '32px',
           borderRadius: '50%',
-          backgroundColor: isListening ? '#ef4444' : '#3b82f6',
+          backgroundColor: isListening ? '#ef4444' : '#6366f1',
           color: 'white',
           border: 'none',
-          cursor: isListening ? 'not-allowed' : 'pointer',
+          cursor: isSpeaking ? 'not-allowed' : 'pointer',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-          fontSize: '24px',
-          opacity: isListening || isSpeaking ? 0.7 : 1,
+          boxShadow: isListening ? '0 0 16px rgba(239,68,68,0.5)' : '0 2px 8px rgba(99,102,241,0.4)',
           transition: 'all 0.2s',
+          opacity: isSpeaking ? 0.7 : 1,
         }}
-        title="Click to start voice input"
+        title={isSpeaking ? 'Currently speaking...' : 'Voice command (Hindi/English)'}
       >
-        🎤
+        {isListening ? <MicOff size={14} /> : <Mic size={14} />}
       </button>
+
+      <style>{`
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+      `}</style>
     </div>
   );
 }

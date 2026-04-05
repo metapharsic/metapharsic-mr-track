@@ -312,6 +312,115 @@ export function getCurrentFormValues(): Record<string, string> {
   return values;
 }
 
+// Delete entity by name via API
+export async function deleteEntityByName(
+  entityType: 'doctor' | 'pharmacy' | 'hospital' | 'mr',
+  name: string
+): Promise<{ success: boolean; deleted?: boolean; error?: string }> {
+  const apiPaths: Record<string, string> = {
+    doctor: 'doctors',
+    pharmacy: 'pharmacies',
+    hospital: 'hospitals',
+    mr: 'mrs',
+  };
+
+  const path = apiPaths[entityType];
+  if (!path) return { success: false, error: `Unknown entity type: ${entityType}` };
+
+  try {
+    const res = await fetch(`/api/${path}${path === 'mrs' ? '' : ''}?name=${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+    });
+
+    if (!res.ok) {
+      return { success: false, error: `Server error: ${res.status}` };
+    }
+
+    const data = await res.json();
+    return { success: true, deleted: data.deleted !== false };
+  } catch (err) {
+    console.error('[Voice] Delete API error:', err);
+    return { success: false, error: String(err) };
+  }
+}
+
+// Search and route voice queries intelligently
+export async function searchAndNavigate(
+  query: string,
+  onCommand: (cmd: string) => void,
+  navigate: (path: string) => void
+): Promise<{ answer?: string; count?: number; action?: string } | null> {
+  const lower = query.toLowerCase();
+
+  // Try keyword search first
+  try {
+    const res = await fetch(`/api/search?q=${encodeURIComponent(query)}&limit=10`);
+    if (res.ok) {
+      const data = await res.json();
+      const count = data.totalCount || 0;
+
+      // If results found, open global search
+      if (count > 0) {
+        onCommand('open-search');
+        setTimeout(() => {
+          const searchInput = document.querySelector(
+            'input[placeholder*="Searcheverything"], input[placeholder*="Ask anything"]'
+          ) as HTMLInputElement;
+          if (searchInput) {
+            const setter = Object.getOwnPropertyDescriptor(
+              window.HTMLInputElement.prototype,
+              'value'
+            )?.set;
+            if (setter) setter.call(searchInput, query);
+            else searchInput.value = query;
+            searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+            searchInput.dispatchEvent(new Event('change', { bubbles: true }));
+            searchInput.focus();
+          }
+        }, 500);
+      }
+
+      return { count, action: count > 0 ? 'search' : 'none' };
+    }
+  } catch {
+    // Search failed, try AI search
+  }
+
+  // Try AI search
+  try {
+    const res = await fetch('/api/ai-search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      onCommand('open-search');
+      setTimeout(() => {
+        const searchInput = document.querySelector(
+          'input[placeholder*="Searcheverything"], input[placeholder*="Ask anything"]'
+        ) as HTMLInputElement;
+        if (searchInput) {
+          const setter = Object.getOwnPropertyDescriptor(
+            window.HTMLInputElement.prototype,
+            'value'
+          )?.set;
+          if (setter) setter.call(searchInput, query);
+          else searchInput.value = query;
+          searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+          searchInput.dispatchEvent(new Event('change', { bubbles: true }));
+          searchInput.focus();
+        }
+      }, 500);
+      return { answer: data.answer, action: 'ai' };
+    }
+  } catch {
+    // AI search failed
+  }
+
+  return null;
+}
+
 // Read table data - improved
 export function readTableData(tableIndex: number = 0): string {
   const tables = document.querySelectorAll('table');

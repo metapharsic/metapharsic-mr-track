@@ -79,7 +79,7 @@ export default function Login() {
 
   const fillDemoCredentials = (type: 'admin' | 'mr') => {
     if (type === 'admin') { setEmail('admin@metapharsic.com'); setPassword('admin123'); }
-    else { setEmail('raviteja.mr@gmail.com'); setPassword('password'); }
+    else { setEmail('rajesh.kumar@metapharsic.com'); setPassword('password'); }
   };
 
   return (
@@ -176,8 +176,8 @@ export default function Login() {
                 <p className="text-xs text-slate-400">admin@metapharsic.com</p>
               </button>
               <button type="button" onClick={() => fillDemoCredentials('mr')} className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-left hover:bg-slate-100 transition-colors">
-                <p className="text-xs font-medium text-slate-600">MR (Gmail)</p>
-                <p className="text-xs text-slate-400">raviteja.mr@gmail.com</p>
+                <p className="text-xs font-medium text-slate-600">MR (Rajesh)</p>
+                <p className="text-xs text-slate-400">rajesh.kumar@metapharsic.com</p>
               </button>
             </div>
           </div>
