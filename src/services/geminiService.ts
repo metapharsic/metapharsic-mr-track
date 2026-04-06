@@ -44,5 +44,24 @@ export const geminiService = {
       console.error("Error forecasting lead:", error);
       return null;
     }
-  }
+  },
+
+  analyzeSales: async (query: string, salesSummary: string) => {
+    if (!ai) {
+      return null; // fallback to client-side
+    }
+
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `You are a pharmaceutical sales analytics AI. Sales Data: ${salesSummary}. Query: "${query}". Provide a concise, actionable response with specific recommendations.`,
+        config: {
+          responseMimeType: "text/plain",
+        },
+      });
+      return response.text || null;
+    } catch {
+      return null;
+    }
+  },
 };
