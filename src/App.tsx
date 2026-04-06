@@ -27,6 +27,7 @@ const VoiceAssistant = lazy(() => import('./components/VoiceAssistant'));
 const Settings = lazy(() => import('./components/Settings'));
 const Login = lazy(() => import('./components/Login'));
 const UserManagement = lazy(() => import('./components/UserManagement'));
+const DynamicDashboard = lazy(() => import('./components/DynamicDashboard'));
 
 const LoadingFallback = () => (
   <div style={{ 
@@ -164,7 +165,8 @@ function AppContent() {
         <main className="flex-1 ml-64 min-h-screen p-8">
           <Suspense fallback={<LoadingFallback />}>
             <Routes>
-              <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+              <Route path="/" element={<ProtectedRoute><DynamicDashboard /></ProtectedRoute>} />
+              <Route path="/legacy-dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
               <Route path="/mrs" element={<ProtectedRoute requiredPermission="mrs.view"><MRManagement /></ProtectedRoute>} />
               <Route path="/products" element={<ProtectedRoute requiredPermission="products.view"><ProductPortfolio /></ProtectedRoute>} />
               <Route path="/directory" element={<ProtectedRoute requiredPermission="directory.view"><HealthcareDirectory /></ProtectedRoute>} />
@@ -180,6 +182,7 @@ function AppContent() {
               <Route path="/mr-tracking" element={<ProtectedRoute requiredPermission="data.view"><MRTracking /></ProtectedRoute>} />
               <Route path="/approvals" element={<ProtectedRoute requiredPermission="expenses.approve"><ApprovalWorkflow /></ProtectedRoute>} />
               <Route path="/entity-credits" element={<ProtectedRoute requiredPermission="data.view"><EntityCredits /></ProtectedRoute>} />
+              <Route path="/unauthorized" element={<Navigate to="/" replace />} />
               <Route path="/login" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>

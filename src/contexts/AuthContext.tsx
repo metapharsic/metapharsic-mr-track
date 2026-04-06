@@ -29,6 +29,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     'leads.view', 'leads.create', 'leads.edit',
     'performance.view',
     'data.view', 'data.export',
+    'settings.view',
     'reports.view', 'reports.generate'
   ],
   mr: [

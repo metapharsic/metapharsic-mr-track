@@ -219,7 +219,8 @@ export default function Sidebar({ onOpenSearch }: SidebarProps) {
             </span>
           )}
         </button>
-        <NavLink 
+        {hasPermission('settings.view') && (
+        <NavLink
           to="/settings"
           className={({ isActive }) => cn(
             "flex items-center gap-3 px-4 py-2 w-full transition-colors",
@@ -229,6 +230,7 @@ export default function Sidebar({ onOpenSearch }: SidebarProps) {
           <Settings size={18} />
           <span>Settings</span>
         </NavLink>
+        )}
         {hasPermission('users.view') && (
           <NavLink 
             to="/users"
