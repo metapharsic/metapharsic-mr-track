@@ -208,8 +208,41 @@ export default function VoiceAssistant({ onCommand, onNavigate }: VoiceAssistant
   const [feedback, setFeedback] = useState('');
   const [voiceEnabled] = useState(true);
   const [showPanel, setShowPanel] = useState(false);
+  const [position, setPosition] = useState(() => {
+    const saved = localStorage.getItem('voice-assistant-pos');
+    return saved ? JSON.parse(saved) : { x: 16, y: 16 };
+  });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragOffsetRef = useRef({ px: 0, py: 0 });
+  const [dragging, setDragging] = useState(false);
+
   const recognitionRef = useRef<any>(null);
   const feedbackTimeoutRef = useRef<number | null>(null);
+
+  const savePosition = useCallback((pos: { x: number; y: number }) => {
+    localStorage.setItem('voice-assistant-pos', JSON.stringify(pos));
+  }, []);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    setIsDragging(true);
+    setDragging(true);
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    const currentPos = position;
+    dragOffsetRef.current = { px: e.clientX - currentPos.x, py: e.clientY - currentPos.y };
+  }, [position]);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!isDragging) return;
+    const x = e.clientX - dragOffsetRef.current.px;
+    const y = e.clientY - dragOffsetRef.current.py;
+    setPosition({ x, y });
+  }, [isDragging]);
+
+  const handlePointerUp = useCallback(() => {
+    if (!isDragging) return;
+    setIsDragging(false);
+    setTimeout(() => setDragging(false), 150);
+  }, [isDragging]);
 
   const setFeedbackTemp = useCallback((text: string, duration = 3000) => {
     if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
@@ -627,37 +660,25 @@ export default function VoiceAssistant({ onCommand, onNavigate }: VoiceAssistant
   };
 
   return (
-    <div style={{
-      position: 'fixed',
-      bottom: '16px',
-      right: '16px',
-      zIndex: 1000,
-      fontFamily: 'Arial, sans-serif',
-    }}>
-      {/* Feedback Toast */}
-      {feedback && (
-        <div style={{
-          position: 'absolute',
-          bottom: '44px',
-          right: 0,
-          background: isListening ? '#1e40af' : '#374151',
-          color: 'white',
-          padding: '4px 10px',
-          borderRadius: '6px',
-          fontSize: '11px',
-          whiteSpace: 'nowrap',
-          maxWidth: '250px',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-          animation: 'fadeIn 0.2s ease',
-        }}>
-          {feedback}
-        </div>
-      )}
-
-      {/* Compact Panel when listening */}
-      {showPanel && isListening && (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label="Voice assistant"
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      style={{
+        position: 'fixed',
+        left: `${position.x}px`,
+        bottom: `${position.y}px`,
+        zIndex: 1000,
+        touchAction: 'none',
+        userSelect: 'none',
+        fontFamily: 'Arial, sans-serif',
+      }}
+    >
+      {/* Listening Panel */}
+      {showPanel && isListening && !isDragging && (
         <div style={{
           backgroundColor: '#1e40af',
           borderRadius: '8px',
@@ -681,9 +702,35 @@ export default function VoiceAssistant({ onCommand, onNavigate }: VoiceAssistant
         </div>
       )}
 
-      {/* Compact Mic Button (32px) */}
+      {/* Feedback Toast */}
+      {feedback && !isDragging && (
+        <div style={{
+          position: 'absolute',
+          bottom: '44px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          background: isListening ? '#1e40af' : '#374151',
+          color: 'white',
+          padding: '4px 10px',
+          borderRadius: '6px',
+          fontSize: '11px',
+          whiteSpace: 'nowrap',
+          maxWidth: '250px',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+          animation: 'fadeIn 0.2s ease',
+        }}>
+          {feedback}
+        </div>
+      )}
+
+      {/* Mic Button */}
       <button
-        onClick={isListening ? stopListening : startListening}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!dragging) isListening ? stopListening() : startListening();
+        }}
         disabled={isSpeaking}
         style={{
           width: '32px',
@@ -692,15 +739,15 @@ export default function VoiceAssistant({ onCommand, onNavigate }: VoiceAssistant
           backgroundColor: isListening ? '#ef4444' : '#6366f1',
           color: 'white',
           border: 'none',
-          cursor: isSpeaking ? 'not-allowed' : 'pointer',
+          cursor: isSpeaking ? 'not-allowed' : 'grab',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           boxShadow: isListening ? '0 0 16px rgba(239,68,68,0.5)' : '0 2px 8px rgba(99,102,241,0.4)',
-          transition: 'all 0.2s',
+          transition: 'box-shadow 0.2s',
           opacity: isSpeaking ? 0.7 : 1,
         }}
-        title={isSpeaking ? 'Currently speaking...' : 'Voice command (Hindi/English)'}
+        title={isSpeaking ? 'Currently speaking...' : 'Drag to move. Click to talk (Hindi/English)'}
       >
         {isListening ? <MicOff size={14} /> : <Mic size={14} />}
       </button>

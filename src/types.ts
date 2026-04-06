@@ -289,3 +289,123 @@ export interface EntityCredit {
   payment_terms: string;
   status: 'current' | 'overdue' | 'blocked';
 }
+
+export interface VisitFrequencyAnalysis {
+  entity_id: number;
+  entity_type: 'doctor' | 'chemist' | 'hospital' | 'clinic';
+  entity_name: string;
+  total_visits: number;
+  last_visit_date: string;
+  visits_last_30_days: number;
+  visits_last_90_days: number;
+  avg_gap_between_visits: number;
+  recommended_frequency: 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly';
+  is_overdue: boolean;
+  next_recommended_date: string;
+  trend: 'increasing' | 'stable' | 'decreasing';
+}
+
+export interface VisitCommentAnalysis {
+  entity_id: number;
+  entity_name: string;
+  total_comments_analyzed: number;
+  overall_sentiment: 'positive' | 'neutral' | 'negative';
+  sentiment_trend: 'improving' | 'stable' | 'declining';
+  key_concerns: string[];
+  interest_topics: string[];
+  product_mentions: string[];
+  engagement_score: number; // 0-100
+  summary: string;
+}
+
+export interface AIForecast {
+  entity_id: number;
+  entity_type: 'doctor' | 'chemist' | 'hospital' | 'clinic';
+  entity_name: string;
+  lead_probability: number; // 0-100
+  lead_status: 'hot' | 'warm' | 'cold' | 'unknown';
+  revenue_forecast: number; // predicted monthly revenue
+  recommended_actions: string[];
+  risk_factors: string[];
+  confidence: number; // 0-100
+  reasoning: string;
+}
+
+export interface GPSPoint {
+  lat: number;
+  lng: number;
+  timestamp: string;
+  accuracy?: number;
+}
+
+export interface VisitRecord {
+  id: number;
+  mr_id: number;
+  mr_name?: string;
+  entity_type: 'doctor' | 'chemist' | 'hospital' | 'clinic';
+  entity_id?: number;
+  entity_name: string;
+  clinic?: string;
+
+  // Schedule tracking
+  scheduled_time?: string;
+  scheduled_visit_id?: number;
+
+  // GPS tracking
+  check_in_gps: { lat: number; lng: number; timestamp: string };
+  check_out_gps?: { lat: number; lng: number; timestamp: string };
+
+  // Photo proof
+  photo_url?: string;
+  photo_captured: boolean;
+  photo_timestamp?: string;
+
+  // Time tracking (all in minutes)
+  arrival_time: string; // actual arrival vs scheduled
+  waiting_time: number; // minutes spent waiting
+  speaking_time: number; // minutes speaking to entity
+  check_in_timestamp: string; // ISO time when MR marked check-in
+  check_out_timestamp?: string; // ISO time when MR left
+
+  // Conversation recording
+  conversation_summary: string; // mandatory min 8 sentences
+  conversation_sentences_count: number;
+  audio_recording_url?: string;
+
+  // Business outcomes
+  sale_done: boolean;
+  sale_amount?: number;
+  sale_product?: string;
+
+  credit_received: boolean;
+  credit_amount?: number;
+  credit_method?: string;
+
+  bill_printed: boolean;
+  bill_number?: string;
+
+  status: 'in_progress' | 'completed' | 'missed' | 'cancelled';
+
+  // Missed visit
+  is_missed?: boolean;
+  miss_reason?: string;
+  admin_notified?: boolean;
+  miss_notification_time?: string;
+
+  // Metadata
+  created_at: string;
+  notes?: string;
+}
+
+export interface MissedVisitAlert {
+  id: number;
+  mr_id: number;
+  mr_name: string;
+  entity_name: string;
+  scheduled_time: string;
+  alert_severity: 'high' | 'critical';
+  alert_message: string;
+  sent_at: string;
+  delivery_status: 'sent' | 'delivered' | 'acknowledged';
+  miss_reason?: string;
+}

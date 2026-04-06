@@ -2,10 +2,12 @@ import React, { useState, useRef, useCallback } from 'react';
 import {
   Mic, Square, Play, Pause, Loader2, Zap,
   CheckCircle2, AlertCircle, Clock,
-  Languages, X, Send
+  Languages, X, Send, Brain
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
+import { geminiService } from '../services/geminiService';
+import { api } from '../services/api';
 
 export interface VisitRecordingData {
   id: number;
@@ -25,16 +27,29 @@ export interface VisitRecordingData {
   shouldRequestApproval: boolean;
   status: 'pending_review' | 'approved' | 'rejected';
   timestamp: string;
+  aiAnalysis?: {
+    lead_probability: number;
+    lead_status: 'hot' | 'warm' | 'cold';
+    reasoning: string;
+    recommended_actions: string[];
+    risk_factors: string[];
+    confidence: number;
+  };
+  visitFrequency?: { total_visits: number; visits_last_30: number; is_overdue: boolean };
 }
 
 interface VoiceRecorderProps {
   mrId: number;
+  mrName?: string;
   entityType: 'doctor' | 'chemist' | 'hospital';
   entityName: string;
+  entityTier?: string;
+  entitySpecialty?: string;
   onRecordingComplete: (recording: VisitRecordingData) => void;
   onLeadDetected?: (lead: { doctorName: string; priority: string; reason: string }) => void;
   onSaleDetected?: (sale: { entity: string; amount: number; details: string }) => void;
   onFollowUpScheduled?: (followUp: { date: string; purpose: string }) => void;
+  useAI?: boolean;
 }
 
 const LEAD_SIGNALS = [
@@ -115,7 +130,8 @@ const LANGUAGES = [
   { code: 'te' as const, label: 'Telugu', short: 'TE' },
 ];
 
-export default function VoiceRecorder({ mrId, entityType, entityName, onRecordingComplete, onLeadDetected, onSaleDetected, onFollowUpScheduled }: VoiceRecorderProps) {
+export default function VoiceRecorder({ mrId, mrName, entityType, entityName, entityTier, entitySpecialty, onRecordingComplete, onLeadDetected, onSaleDetected, onFollowUpScheduled, useAI = true }: VoiceRecorderProps) {
+  const [selectedLang, setLanguage] = useState<'en' | 'hi' | 'te'>('en');
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [transcript, setTranscript] = useState('');
@@ -146,7 +162,7 @@ export default function VoiceRecorder({ mrId, entityType, entityName, onRecordin
       if (supported) {
         const r = new SR();
         const map = { en: 'en-IN', hi: 'hi-IN', te: 'te-IN' };
-        r.lang = map[language];
+        r.lang = map[selectedLang];
         r.continuous = true;
         r.interimResults = true;
         r.onresult = (ev: any) => {
@@ -174,14 +190,48 @@ export default function VoiceRecorder({ mrId, entityType, entityName, onRecordin
     }
   }, [supported]);
 
-  const process = useCallback(() => {
+  const process = useCallback(async () => {
     const d = analyzeText(transcript);
     setDetection(d);
     if (d.isLead && onLeadDetected) onLeadDetected({ doctorName: entityName, priority: d.leadConfidence > 70 ? 'high' : 'medium', reason: d.leadReasoning });
     if (d.isSale && onSaleDetected) onSaleDetected({ entity: entityName, amount: d.saleAmount, details: d.saleDetails });
     if (d.shouldScheduleFollowUp && onFollowUpScheduled) onFollowUpScheduled({ date: new Date(Date.now() + 86400000).toISOString().split('T')[0], purpose: d.followUpPurpose });
-    onRecordingComplete({ id: Date.now(), mrId, entityType, entityName, transcript, language: selectedLang, isLead: d.isLead, leadConfidence: d.leadConfidence, leadReasoning: d.leadReasoning, isSale: d.isSale, saleAmount: d.saleAmount, saleDetails: d.saleDetails, shouldScheduleFollowUp: d.shouldScheduleFollowUp, followUpPurpose: d.followUpPurpose, shouldRequestApproval: d.shouldRequestApproval, status: 'pending_review', timestamp: new Date().toISOString() });
-  }, [transcript, entityName, mrId, entityType, selectedLang, onRecordingComplete, onLeadDetected, onSaleDetected, onFollowUpScheduled]);
+
+    // AI enrichment
+    let aiData: VisitRecordingData['aiAnalysis'] = undefined;
+    let freqData: VisitRecordingData['visitFrequency'] = undefined;
+
+    if (useAI && transcript.length > 20) {
+      setAiLoading(true);
+      try {
+        const visits = await api.visits.getAll();
+        const entityVisits = visits.filter((v: any) => (v.entity_name === entityName || v.doctor_name === entityName) && v.status === 'completed');
+        freqData = {
+          total_visits: entityVisits.length,
+          visits_last_30: entityVisits.filter((v: any) => (Date.now() - new Date(v.visit_date).getTime()) <= 30 * 86400000).length,
+          is_overdue: entityVisits.filter((v: any) => (Date.now() - new Date(v.visit_date).getTime()) <= 30 * 86400000).length === 0,
+        };
+        setVisitFreq(freqData);
+
+        const profile = { name: entityName, type: entityType, tier: entityTier || 'B', specialty: entitySpecialty };
+        const forecast = await geminiService.forecastEntityLead(profile, entityVisits, transcript);
+        if (forecast) {
+          aiData = {
+            lead_probability: forecast.lead_probability,
+            lead_status: forecast.lead_status === 'unknown' ? 'cold' : forecast.lead_status,
+            reasoning: forecast.reasoning,
+            recommended_actions: forecast.recommended_actions,
+            risk_factors: forecast.risk_factors,
+            confidence: forecast.confidence,
+          };
+          setAiResult(aiData);
+        }
+      } catch { /* AI fallback gracefully */ }
+      setAiLoading(false);
+    }
+
+    onRecordingComplete({ id: Date.now(), mrId, entityType, entityName, transcript, language: selectedLang, isLead: d.isLead, leadConfidence: d.leadConfidence, leadReasoning: d.leadReasoning, isSale: d.isSale, saleAmount: d.saleAmount, saleDetails: d.saleDetails, shouldScheduleFollowUp: d.shouldScheduleFollowUp, followUpPurpose: d.followUpPurpose, shouldRequestApproval: d.shouldRequestApproval, status: 'pending_review', timestamp: new Date().toISOString(), aiAnalysis: aiData, visitFrequency: freqData });
+  }, [transcript, entityName, mrId, entityType, entityTier, entitySpecialty, selectedLang, useAI, onRecordingComplete, onLeadDetected, onSaleDetected, onFollowUpScheduled]);
 
   const stop = useCallback(() => {
     recorderRef.current?.stop();
@@ -206,8 +256,10 @@ export default function VoiceRecorder({ mrId, entityType, entityName, onRecordin
     setIsPaused(!isPaused);
   };
 
-  const [selectedLang, setLanguage] = useState<'en' | 'hi' | 'te'>('en');
   const [saving, setSaving] = useState(false);
+  const [aiResult, setAiResult] = useState<any>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [visitFreq, setVisitFreq] = useState<{ total_visits: number; visits_last_30: number; is_overdue: boolean } | null>(null);
 
   const fmt = (s: number) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
 
@@ -252,6 +304,51 @@ export default function VoiceRecorder({ mrId, entityType, entityName, onRecordin
           {detection.shouldRequestApproval && !approvalSent && (
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg"><div className="flex items-center gap-2 mb-1"><AlertCircle className="w-4 h-4 text-amber-600" /><span className="text-xs font-bold text-amber-700">Approval Required</span></div>
               <button onClick={sendApproval} disabled={saving} className="mt-2 flex items-center gap-2 px-3 py-1.5 bg-amber-600 text-white rounded text-xs font-bold hover:bg-amber-700 disabled:opacity-50">{saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Send className="w-3 h-3" />}<span>Request Approval</span></button>
+            </div>
+          )}
+          {aiLoading && (
+            <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin text-purple-600" />
+              <span className="text-xs font-bold text-purple-700">AI analysis in progress...</span>
+            </div>
+          )}
+          {aiResult && (
+            <div className={cn("p-3 rounded-lg border",
+              aiResult.lead_status === 'hot' ? "bg-green-50 border-green-200" :
+              aiResult.lead_status === 'warm' ? "bg-amber-50 border-amber-200" :
+              "bg-gray-50 border-gray-100"
+            )}>
+              <div className="flex items-center gap-2 mb-2">
+                <Brain className="w-4 h-4 text-purple-600" />
+                <span className="text-xs font-bold text-purple-700">AI Forecast — {aiResult.lead_status.toUpperCase()} LEAD ({aiResult.lead_probability}%)</span>
+              </div>
+              <p className="text-xs text-purple-600 mb-2">{aiResult.reasoning}</p>
+              {aiResult.recommended_actions.length > 0 && (
+                <div className="mt-2">
+                  <p className="text-[10px] font-bold text-purple-500 uppercase">Recommended Actions:</p>
+                  <ul className="text-xs text-purple-600 mt-1 space-y-0.5">
+                    {aiResult.recommended_actions.map((a: string, i: number) => <li key={i}>• {a}</li>)}
+                  </ul>
+                </div>
+              )}
+              {aiResult.risk_factors.length > 0 && (
+                <div className="mt-2">
+                  <p className="text-[10px] font-bold text-red-400 uppercase">Risk Factors:</p>
+                  <ul className="text-xs text-red-400 mt-1 space-y-0.5">
+                    {aiResult.risk_factors.map((r: string, i: number) => <li key={i}>• {r}</li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+          {visitFreq && (
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center gap-2 mb-1"><Clock className="w-4 h-4 text-blue-600" /><span className="text-xs font-bold text-blue-700">Visit History</span></div>
+              <div className="flex gap-4 text-[11px] text-blue-600">
+                <span>{visitFreq.total_visits} total visits</span>
+                <span>{visitFreq.visits_last_30} in last 30 days</span>
+                {visitFreq.is_overdue && <span className="text-red-500 font-bold">Overdue!</span>}
+              </div>
             </div>
           )}
           {approvalSent && <p className="text-xs text-green-600 font-medium flex items-center gap-1"><CheckCircle2 className="w-3 h-3" />Approval request sent</p>}

@@ -162,7 +162,8 @@ export default function LeadsManagement() {
         if (specialtyMatch) {
           specialty = specialtyMatch[1];
         }
-        if (matchedMr) {
+        const visitMr = mrs.find(m => m.territory === mr?.territory) || mrs[0];
+        if (visitMr) {
           results.push({
             is_lead: true,
             doctor_name: doctorName,
@@ -171,8 +172,8 @@ export default function LeadsManagement() {
             priority: positiveCount >= 3 ? 'high' : 'medium',
             confidence,
             reasoning: `Visit: ${visit.purpose}. ${text.trim()}`,
-            mr_id: matchedMr.id || 0,
-            mr_name: matchedMr.name || 'Unknown'
+            mr_id: visitMr.id || 0,
+            mr_name: visitMr.name || 'Unknown'
           });
         }
       } else if (positiveCount === 0) {

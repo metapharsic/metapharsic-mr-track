@@ -653,7 +653,10 @@ const data = {
     { mr_id: 1, mr_name: "Rajesh Kumar", lat: 17.4435, lng: 78.3772, timestamp: "2026-04-05T10:30:00Z", activity_type: "visit", speed: 0 },
     { mr_id: 2, mr_name: "Suresh Raina", lat: 17.4239, lng: 78.4738, timestamp: "2026-04-05T10:15:00Z", activity_type: "travel", speed: 15 },
     { mr_id: 3, mr_name: "Priya Sharma", lat: 17.4065, lng: 78.5225, timestamp: "2026-04-05T10:45:00Z", activity_type: "idle", speed: 0 }
-  ]
+  ],
+  visit_records: [],
+  missed_visits: [],
+  daily_summaries: []
 };
 
 let nextId = {
@@ -937,6 +940,100 @@ async function startServer() {
       status: 'sent'
     });
     res.json({ success: true, message: 'Email logged (demo mode)' });
+  });
+
+  // MR Field Tracking - Visit Records
+  app.get("/api/visit-records", (req, res) => {
+    const mrId = req.query.mr_id ? Number(req.query.mr_id) : null;
+    const records = mrId ? data.visit_records.filter(v => v.mr_id === mrId) : data.visit_records;
+    res.json(records);
+  });
+
+  app.post("/api/visit-records", (req, res) => {
+    const record = req.body;
+    const newRecord = { ...record, id: nextId.visit_records++, created_at: record.created_at || new Date().toISOString() };
+    data.visit_records.push(newRecord);
+
+    // If this is a missed visit, create alert and notify admin
+    if (record.is_missed || record.status === 'missed') {
+      const alert = {
+        id: nextId.missed_visits++,
+        mr_id: record.mr_id,
+        mr_name: record.mr_name || 'Unknown MR',
+        entity_name: record.entity_name,
+        scheduled_time: record.scheduled_time || 'Unknown',
+        alert_severity: 'critical' as const,
+        alert_message: `CRITICAL: ${record.mr_name || 'MR'} missed scheduled visit to ${record.entity_name}. Reason: ${record.miss_reason || 'Not provided'}`,
+        sent_at: new Date().toISOString(),
+        delivery_status: 'sent' as const,
+        miss_reason: record.miss_reason,
+      };
+      data.missed_visits.push(alert);
+
+      // Send high-priority notification to admin
+      data.notifications.push({
+        id: nextId.notifications++,
+        type: 'error',
+        title: `MISSED VISIT ALERT`,
+        message: `${record.mr_name || 'MR'} missed scheduled visit to ${record.entity_name} at ${record.scheduled_time}. Reason: ${record.miss_reason || 'Not provided'}. This requires immediate attention.`,
+        timestamp: new Date().toISOString(),
+        read: false,
+        severity: 'high',
+        created_at: new Date().toISOString(),
+      });
+    }
+
+    res.json(newRecord);
+  });
+
+  app.patch("/api/visit-records/:id", (req, res) => {
+    const id = Number(req.params.id);
+    const idx = data.visit_records.findIndex(v => v.id === id);
+    if (idx === -1) { return res.status(404).json({ error: 'Visit record not found' }); }
+    data.visit_records[idx] = { ...data.visit_records[idx], ...req.body };
+    res.json(data.visit_records[idx]);
+  });
+
+  // Missed Visits - admin view
+  app.get("/api/missed-visits", (req, res) => res.json(data.missed_visits));
+
+  // Daily Summary for MR
+  app.get("/api/daily-summaries", (req, res) => {
+    const mrId = req.query.mr_id ? Number(req.query.mr_id) : null;
+    const date = req.query.date ? String(req.query.date) : new Date().toISOString().split('T')[0];
+
+    if (!mrId) { return res.status(400).json({ error: 'mr_id required' }); }
+
+    const todayRecords = data.visit_records.filter(v => v.mr_id === mrId && v.created_at && v.created_at.startsWith(date));
+    const completed = todayRecords.filter(v => v.status === 'completed');
+    const missed = todayRecords.filter(v => v.is_missed || v.status === 'missed');
+    const todaySchedules = data.visit_schedules.filter(s => s.mr_id === mrId && s.scheduled_date === date);
+
+    const totalWaiting = completed.reduce((sum, v) => sum + (v.waiting_time || 0), 0);
+    const totalSpeaking = completed.reduce((sum, v) => sum + (v.speaking_time || 0), 0);
+    const totalSales = completed.filter(v => v.sale_done).reduce((sum, v) => sum + (v.sale_amount || 0), 0);
+    const totalCredit = completed.filter(v => v.credit_received).reduce((sum, v) => sum + (v.credit_amount || 0), 0);
+    const billsPrinted = completed.filter(v => v.bill_printed).length;
+
+    const summary = {
+      mr_id: mrId,
+      date,
+      scheduled_visits: todaySchedules.length,
+      completed_visits: completed.length,
+      missed_visits: missed.length,
+      in_progress: todayRecords.filter(v => v.status === 'in_progress').length,
+      total_waiting_minutes: totalWaiting,
+      total_speaking_minutes: totalSpeaking,
+      total_sales_amount: totalSales,
+      total_credit_received: totalCredit,
+      bills_printed: billsPrinted,
+      photo_captured_count: completed.filter(v => v.photo_captured).length,
+      visits: todayRecords,
+      missed_details: missed.map(m => ({ entity: m.entity_name, reason: m.miss_reason, time: m.scheduled_time })),
+      schedule_compliance: todaySchedules.length > 0 ? ((completed.length / todaySchedules.length) * 100).toFixed(1) : '100',
+    };
+
+    res.json(summary);
   });
 
   // Data Management Endpoints

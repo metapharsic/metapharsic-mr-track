@@ -87,6 +87,7 @@ const navItems = [
   { icon: LayoutGrid, label: 'MR Dashboard', path: '/mr-dashboard', permission: 'mr-dashboard.view' },
   { icon: BarChart3, label: 'Performance', path: '/performance', permission: 'performance.view' },
   { icon: MapPin, label: 'MR Tracking', path: '/mr-tracking', permission: 'data.view' },
+  { icon: MapPin, label: 'Field Tracker', path: '/field-tracker', permission: 'data.view' },
   { icon: FileCheck, label: 'Approvals', path: '/approvals', permission: 'expenses.approve' },
   { icon: CreditCard, label: 'Entity Credits', path: '/entity-credits', permission: 'data.view' },
   { icon: FileText, label: 'Data Management', path: '/data-management', permission: 'data.view' },

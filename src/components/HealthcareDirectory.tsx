@@ -1,16 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
-import { Doctor, Pharmacy, Hospital, MR } from '../types';
-import { 
-  Search, Filter, Plus, MapPin, Phone, 
-  Star, Clock, Building2, Stethoscope, 
+import { Doctor, Pharmacy, Hospital, MR, Visit } from '../types';
+import {
+  Search, Filter, Plus, MapPin, Phone,
+  Star, Clock, Building2, Stethoscope,
   Pill, ChevronRight, MoreVertical,
   Mail, ExternalLink, LayoutGrid, List as ListIcon,
   ChevronDown, ChevronUp, Table as TableIcon,
-  Calendar, Zap, CheckCircle2, User, Loader2, X
+  Calendar, Zap, CheckCircle2, User, Loader2, X,
+  Brain, TrendingUp
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
+import AIVisitInspector from './AIVisitInspector';
 
 type EntityType = 'all' | 'doctor' | 'pharmacy' | 'hospital';
 

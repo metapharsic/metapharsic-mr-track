@@ -67,6 +67,13 @@ export const api = {
   visits: {
     getAll: () => fetch(`${API_BASE}/doctor-visits`).then(res => res.json() as Promise<Visit[]>),
     getSchedules: () => fetch(`${API_BASE}/visit-schedules`).then(res => res.json() as Promise<any[]>),
+    getSchedulesByMr: (mrId: number) => fetch(`${API_BASE}/visit-schedules?mr_id=${mrId}`).then(res => res.json() as Promise<any[]>),
+    createSchedule: (schedule: any) => fetch(`${API_BASE}/visit-schedules`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(schedule)
+    }).then(res => res.json()),
+    deleteSchedule: (id: number) => fetch(`${API_BASE}/visit-schedules/${id}`, { method: 'DELETE' }).then(res => res.json()),
   },
   leads: {
     getAll: () => fetch(`${API_BASE}/leads`).then(res => res.json() as Promise<Lead[]>),
@@ -101,6 +108,9 @@ export const api = {
     getAll: (mrId?: number) => {
       const url = mrId ? `${API_BASE}/visit-recordings?mr_id=${mrId}` : `${API_BASE}/visit-recordings`;
       return fetch(url).then(res => res.json() as Promise<any[]>);
+    },
+    getByEntity: (entityName: string) => {
+      return fetch(`${API_BASE}/visit-recordings?entity=${encodeURIComponent(entityName)}`).then(res => res.json() as Promise<any[]>);
     },
     create: (recording: Partial<VisitRecordingData>) => fetch(`${API_BASE}/visit-recordings`, {
       method: 'POST',
@@ -147,5 +157,32 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ to, subject, body, mr_id: mrId })
     }).then(res => res.json()),
-  }
+  },
+  visitRecords: {
+    getAll: (mrId?: number) => {
+      const url = mrId ? `${API_BASE}/visit-records?mr_id=${mrId}` : `${API_BASE}/visit-records`;
+      return fetch(url).then(res => res.json() as Promise<any[]>);
+    },
+    create: (record: any) => fetch(`${API_BASE}/visit-records`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(record)
+    }).then(res => res.json()),
+    update: (id: number, updates: any) => fetch(`${API_BASE}/visit-records/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    }).then(res => res.json()),
+  },
+  missedVisits: {
+    getAll: () => fetch(`${API_BASE}/missed-visits`).then(res => res.json() as Promise<any[]>),
+  },
+  dailySummaries: {
+    get: (mrId: number, date?: string) => {
+      const url = date
+        ? `${API_BASE}/daily-summaries?mr_id=${mrId}&date=${date}`
+        : `${API_BASE}/daily-summaries?mr_id=${mrId}`;
+      return fetch(url).then(res => res.json() as Promise<any>);
+    },
+  },
 };

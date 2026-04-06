@@ -225,12 +225,12 @@ export default function EntityCredits() {
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {[
-              { label: 'Credit Limit', key: 'credit_limit', value: selectedEntity.credit_limit, format: (v: number) => `₹${v.toLocaleString()}` },
-              { label: 'Outstanding', key: 'outstanding', value: selectedEntity.outstanding, format: (v: number) => `₹${v.toLocaleString()}` },
+            {([
+              { label: 'Credit Limit', key: 'credit_limit', value: selectedEntity.credit_limit, format: (v: number | string) => `₹${Number(v).toLocaleString()}` },
+              { label: 'Outstanding', key: 'outstanding', value: selectedEntity.outstanding, format: (v: number | string) => `₹${Number(v).toLocaleString()}` },
               { label: 'Payment Terms', key: 'payment_terms', value: selectedEntity.payment_terms, format: (v: string) => v },
               { label: 'Status', key: 'status', value: selectedEntity.status, format: (v: string) => v },
-            ].map(field => (
+            ] as const).map(field => (
               <div key={field.key}>
                 <label className="text-xs text-gray-500 font-medium block mb-1">{field.label}</label>
                 {editMode && (field.key === 'credit_limit' || field.key === 'outstanding' || field.key === 'payment_terms' || field.key === 'status') ? (

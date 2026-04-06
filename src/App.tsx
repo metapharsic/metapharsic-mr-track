@@ -20,6 +20,7 @@ const MRDashboard = lazy(() => import('./components/MRDashboard'));
 const DataManagement = lazy(() => import('./components/DataManagement'));
 const MRPerformanceDashboard = lazy(() => import('./components/MRPerformanceDashboard'));
 const MRTracking = lazy(() => import('./components/MRTracking'));
+const MRFieldTracker = lazy(() => import('./components/MRFieldTracker'));
 const ApprovalWorkflow = lazy(() => import('./components/ApprovalWorkflow'));
 const EntityCredits = lazy(() => import('./components/EntityCredits'));
 const GlobalSearch = lazy(() => import('./components/GlobalSearch'));
@@ -180,6 +181,7 @@ function AppContent() {
               <Route path="/settings" element={<ProtectedRoute requiredPermission="settings.view"><Settings /></ProtectedRoute>} />
               <Route path="/users" element={<ProtectedRoute requiredPermission="users.view"><UserManagement /></ProtectedRoute>} />
               <Route path="/mr-tracking" element={<ProtectedRoute requiredPermission="data.view"><MRTracking /></ProtectedRoute>} />
+              <Route path="/field-tracker" element={<ProtectedRoute requiredPermission="data.view"><MRFieldTracker /></ProtectedRoute>} />
               <Route path="/approvals" element={<ProtectedRoute requiredPermission="expenses.approve"><ApprovalWorkflow /></ProtectedRoute>} />
               <Route path="/entity-credits" element={<ProtectedRoute requiredPermission="data.view"><EntityCredits /></ProtectedRoute>} />
               <Route path="/unauthorized" element={<Navigate to="/" replace />} />
