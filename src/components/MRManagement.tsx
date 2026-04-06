@@ -45,6 +45,8 @@ export default function MRManagement() {
     joining_date: new Date().toISOString().split('T')[0], phone: '', email: '',
     status: 'active', user_id: '',
   });
+  const [avatarPreview, setAvatarPreview] = useState<string>('');
+  const avatarInputRef = React.useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (selectedMr) {
@@ -69,6 +71,24 @@ export default function MRManagement() {
   function saveLocalMrs(mrsArr: MR[]) {
     localStorage.setItem('metapharsic_mrs_local', JSON.stringify(mrsArr));
   }
+
+  const handleAvatarSelect = (file: File | null, isCreateForm: boolean = false) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      if (isCreateForm) {
+        setAvatarPreview(dataUrl);
+      } else {
+        setEditForm(prev => ({ ...prev, avatar_url: dataUrl }));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const triggerAvatarInput = () => {
+    avatarInputRef.current?.click();
+  };
 
   const fetchData = () => {
     setLoading(true);
@@ -232,11 +252,12 @@ export default function MRManagement() {
         total_sales: 0,
         targets_achieved: 0,
         targets_missed: 0,
-        avatar_url: `https://ui-avatars.com/api/?name=${encodeURIComponent(newMr.name)}&background=6366f1&color=fff`,
+        avatar_url: avatarPreview || `https://ui-avatars.com/api/?name=${encodeURIComponent(newMr.name)}&background=6366f1&color=fff`,
       };
       localMrs.push(created);
       saveLocalMrs(localMrs);
       setMrs(prev => [...prev, created]);
+      setAvatarPreview('');
       setShowCreateModal(false);
       setNewMr({
         name: '', territory: TERRITORIES[0] || '', base_salary: '', daily_allowance: '',
@@ -493,9 +514,9 @@ export default function MRManagement() {
                 <header className="flex justify-between items-start">
                   <div className="flex gap-6">
                     <div className="relative group/avatar">
-                      {selectedMr.avatar_url ? (
-                        <img 
-                          src={selectedMr.avatar_url} 
+                      {editForm.avatar_url || selectedMr.avatar_url ? (
+                        <img
+                          src={editForm.avatar_url || selectedMr.avatar_url}
                           alt={selectedMr.name}
                           className="w-24 h-24 rounded-3xl object-cover shadow-xl shadow-blue-600/10"
                           referrerPolicy="no-referrer"
@@ -506,10 +527,20 @@ export default function MRManagement() {
                         </div>
                       )}
                       {isEditing && (
-                        <div className="absolute inset-0 bg-black/40 rounded-3xl flex items-center justify-center opacity-0 group-hover/avatar:opacity-100 transition-opacity cursor-pointer">
+                        <div
+                          className="absolute inset-0 bg-black/40 rounded-3xl flex items-center justify-center opacity-0 group-hover/avatar:opacity-100 transition-opacity cursor-pointer"
+                          onClick={triggerAvatarInput}
+                        >
                           <Camera className="text-white" size={24} />
                         </div>
                       )}
+                      <input
+                        ref={avatarInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={e => handleAvatarSelect(e.target.files?.[0] || null, false)}
+                      />
                     </div>
                     <div className="flex-1">
                       {isEditing ? (
@@ -1239,8 +1270,40 @@ export default function MRManagement() {
               onClick={e => e.stopPropagation()}
             >
               {/* Header */}
-              <div className="flex items-center justify-between p-6 border-b border-slate-200">
-                <div>
+              <div className="flex items-start justify-between p-6 border-b border-slate-200 gap-4">
+                {/* Avatar Upload */}
+                <div className="shrink-0">
+                  <input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    onChange={e => handleAvatarSelect(e.target.files?.[0] || null, true)}
+                  />
+                  <div
+                    className="w-20 h-20 rounded-2xl bg-blue-50 border-2 border-dashed border-blue-300 flex items-center justify-center cursor-pointer hover:bg-blue-100 hover:border-blue-400 transition-colors overflow-hidden"
+                    onClick={triggerAvatarInput}
+                  >
+                    {avatarPreview ? (
+                      <img src={avatarPreview} alt="Preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="flex flex-col items-center gap-0.5">
+                        <Camera size={20} className="text-blue-400" />
+                        <span className="text-[8px] text-blue-400 font-medium">Upload</span>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1 text-center">Add photo</p>
+                  <input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={e => handleAvatarSelect(e.target.files?.[0] || null, true)}
+                  />
+                </div>
+                <div className="flex-1">
                   <h2 className="text-xl font-bold text-slate-900">Add New Medical Representative</h2>
                   <p className="text-sm text-slate-500 mt-0.5">Data is saved locally first, then synced on deployment</p>
                 </div>
