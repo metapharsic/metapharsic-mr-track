@@ -74,14 +74,28 @@ export default function MRManagement() {
 
   const handleAvatarSelect = (file: File | null, isCreateForm: boolean = false) => {
     if (!file) return;
+    const img = new Image();
     const reader = new FileReader();
     reader.onload = (e) => {
-      const dataUrl = e.target?.result as string;
-      if (isCreateForm) {
-        setAvatarPreview(dataUrl);
-      } else {
-        setEditForm(prev => ({ ...prev, avatar_url: dataUrl }));
-      }
+      img.onload = () => {
+        // Compress to 200x200 max, JPEG 0.8 quality
+        const canvas = document.createElement('canvas');
+        const MAX = 200;
+        let w = img.width, h = img.height;
+        if (w > h) { h = (h / w) * MAX; w = MAX; }
+        else { w = (w / h) * MAX; h = MAX; }
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        if (isCreateForm) {
+          setAvatarPreview(dataUrl);
+        } else {
+          setEditForm(prev => ({ ...prev, avatar_url: dataUrl }));
+        }
+      };
+      img.src = e.target?.result as string;
     };
     reader.readAsDataURL(file);
   };
