@@ -25,7 +25,7 @@ const COLORS = ['#2563eb', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#ec4899'
 export default function DynamicDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [widgets, setWidgets] = useState<WidgetConfig[]>(getDefaultWidgets());
+  const [widgets, setWidgets] = useState<WidgetConfig[]>([]);
   const [mrs, setMrs] = useState<MR[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [targets, setTargets] = useState<TargetType[]>([]);
