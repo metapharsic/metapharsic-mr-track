@@ -64,4 +64,18 @@ export const geminiService = {
       return null;
     }
   },
+
+  analyzeExpenses: async (query: string, expenseSummary: string) => {
+    if (!ai) return null;
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `You are an expense optimization AI for a pharmaceutical sales company. Expense Data: ${expenseSummary}. Query: "${query}". Provide specific, actionable recommendations to reduce costs. Be concise.`,
+        config: { responseMimeType: "text/plain" },
+      });
+      return response.text || null;
+    } catch {
+      return null;
+    }
+  },
 };
