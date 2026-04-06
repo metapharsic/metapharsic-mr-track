@@ -21,6 +21,11 @@ export const authApi = {
 export const api = {
   mrs: {
     getAll: () => fetch(`${API_BASE}/mrs`).then(res => res.json() as Promise<MR[]>),
+    create: (mr: Omit<MR, 'id'>) => fetch(`${API_BASE}/mrs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(mr)
+    }).then(res => res.json() as Promise<MR>),
     update: (id: number, mr: Partial<MR>) => fetch(`${API_BASE}/mrs/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },

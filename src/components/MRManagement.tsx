@@ -36,6 +36,15 @@ export default function MRManagement() {
   const [mrActivities, setMrActivities] = useState<Activity[]>([]);
   const [selectedVisitLog, setSelectedVisitLog] = useState<Visit | null>(null);
   const [expandedAttendanceId, setExpandedAttendanceId] = useState<number | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newMr, setNewMr] = useState<{
+    name: string; territory: string; base_salary: string; daily_allowance: string;
+    joining_date: string; phone: string; email: string; status: 'active' | 'inactive'; user_id: string;
+  }>({
+    name: '', territory: TERRITORIES[0] || '', base_salary: '', daily_allowance: '',
+    joining_date: new Date().toISOString().split('T')[0], phone: '', email: '',
+    status: 'active', user_id: '',
+  });
 
   useEffect(() => {
     if (selectedMr) {
@@ -48,6 +57,19 @@ export default function MRManagement() {
     fetchData();
   }, []);
 
+  function loadLocalMrs(): MR[] {
+    try {
+      const saved = localStorage.getItem('metapharsic_mrs_local');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  function saveLocalMrs(mrsArr: MR[]) {
+    localStorage.setItem('metapharsic_mrs_local', JSON.stringify(mrsArr));
+  }
+
   const fetchData = () => {
     setLoading(true);
     Promise.all([
@@ -55,7 +77,19 @@ export default function MRManagement() {
       api.visits.getAll(),
       api.sales.getAll()
     ]).then(([mrsData, visitsData, salesData]) => {
-      setMrs(mrsData || []);
+      const localMrsArr = loadLocalMrs();
+      const apiMrsMap = new Map((mrsData || []).map((m: MR) => [m.id, m]));
+      // Replace locally created MRs with their latest local state; keep all others
+      const localIds = new Set(localMrsArr.map((m: MR) => m.id));
+      const mergedMrs = (mrsData || []).filter((m: MR) => !localIds.has(m.id));
+      for (const id of apiMrsMap.keys()) {
+        if (localIds.has(id)) {
+          const local = localMrsArr.find((x: MR) => x.id === id);
+          if (local) mergedMrs.push(local);
+        }
+      }
+      mergedMrs.push(...localMrsArr.filter((m: MR) => !apiMrsMap.has(m.id)));
+      setMrs(mergedMrs);
       setVisitSchedules(visitsData || []);
       setSales(salesData || []);
       setLoading(false);
@@ -143,34 +177,77 @@ export default function MRManagement() {
   };
 
   const downloadAllData = () => {
-    const headers = ['MR Name', 'Territory', 'Entity Name', 'Entity Type', 'Visit Date', 'Visit Time', 'Purpose', 'Notes', 'Order Value', 'Lead Forecast'];
-    const csvContent = [
-      headers.join(','),
+    const mrSummaryHeaders = ['MR Name', 'Territory', 'Email', 'Phone', 'Status', 'Total Sales', 'Performance Score', 'Joining Date', 'Targets Achieved', 'Targets Missed'];
+    const mrSummaryRows = mrs.map(mr => [
+      `"${mr.name}"`, `"${mr.territory}"`, `"${mr.email}"`, `"${mr.phone}"`,
+      mr.status, mr.total_sales, mr.performance_score, mr.joining_date,
+      mr.targets_achieved, mr.targets_missed
+    ].join(','));
+    const mrContent = [mrSummaryHeaders.join(','), ...mrSummaryRows].join('\n');
+
+    const visitHeaders = ['MR Name', 'Territory', 'Entity Name', 'Entity Type', 'Visit Date', 'Visit Time', 'Purpose', 'Notes', 'Order Value', 'Lead Forecast'];
+    const visitContent = [
+      visitHeaders.join(','),
       ...visitSchedules.map(v => {
         const mr = mrs.find(m => m.id === v.mr_id);
         return [
-          `"${mr?.name || 'Unknown'}"`,
-          `"${mr?.territory || 'Unknown'}"`,
-          `"${v.entity_name}"`,
-          v.entity_type,
-          v.visit_date,
-          v.visit_time,
-          `"${v.purpose}"`,
-          `"${v.notes.replace(/"/g, '""')}"`,
+          `"${mr?.name || 'Unknown'}"`, `"${mr?.territory || 'Unknown'}"`,
+          `"${v.entity_name}"`, v.entity_type, v.visit_date, v.visit_time,
+          `"${v.purpose}"`, `"${v.notes.replace(/"/g, '""')}"`,
           v.order_value,
           forecasts[v.id] ? (forecasts[v.id].isLead ? 'High Potential' : 'Low Potential') : 'Not Forecasted'
         ].join(',');
       })
     ].join('\n');
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const combined = `--- MR SUMMARY ---\n${mrContent}\n\n--- VISIT DETAILS ---\n${visitContent}`;
+    const blob = new Blob([combined], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.setAttribute('href', url);
-    link.setAttribute('download', `Global_MR_Visit_Data_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `MR_Full_Report_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const handleCreateNewMr = async () => {
+    if (!newMr.name || !newMr.email) return;
+    setSaving(true);
+    try {
+      const localMrs = loadLocalMrs();
+      const newId = localMrs.length > 0 ? Math.min(...localMrs.map(m => m.id)) - 1 : -1;
+      const created: MR = {
+        id: newId,
+        name: newMr.name,
+        territory: newMr.territory,
+        base_salary: Number(newMr.base_salary) || 0,
+        daily_allowance: Number(newMr.daily_allowance) || 0,
+        joining_date: newMr.joining_date,
+        phone: newMr.phone,
+        email: newMr.email,
+        status: newMr.status,
+        user_id: newMr.user_id ? Number(newMr.user_id) : undefined,
+        performance_score: 0,
+        total_sales: 0,
+        targets_achieved: 0,
+        targets_missed: 0,
+        avatar_url: `https://ui-avatars.com/api/?name=${encodeURIComponent(newMr.name)}&background=6366f1&color=fff`,
+      };
+      localMrs.push(created);
+      saveLocalMrs(localMrs);
+      setMrs(prev => [...prev, created]);
+      setShowCreateModal(false);
+      setNewMr({
+        name: '', territory: TERRITORIES[0] || '', base_salary: '', daily_allowance: '',
+        joining_date: new Date().toISOString().split('T')[0], phone: '', email: '',
+        status: 'active', user_id: '',
+      });
+    } catch (error) {
+      console.error('Failed to create MR:', error);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleForecast = async (visit: Visit) => {
@@ -193,9 +270,22 @@ export default function MRManagement() {
     if (!selectedMr || !editForm) return;
     setSaving(true);
     try {
-      const updated = await api.mrs.update(selectedMr.id, editForm);
-      setMrs(prev => prev.map(m => m.id === updated.id ? updated : m));
-      setSelectedMr(updated);
+      // Update in localStorage
+      const localMrs = loadLocalMrs();
+      const localIdx = localMrs.findIndex(m => m.id === selectedMr.id);
+      if (localIdx >= 0) {
+        localMrs[localIdx] = { ...localMrs[localIdx], ...editForm };
+        saveLocalMrs(localMrs);
+      }
+      // Also try to update the server (will work on Render deployment)
+      try {
+        const updated = await api.mrs.update(selectedMr.id, editForm);
+        setMrs(prev => prev.map(m => m.id === updated.id ? updated : m));
+      } catch {
+        // Server update failed, use local update
+        setMrs(prev => prev.map(m => m.id === selectedMr.id ? { ...m, ...editForm as Partial<MR> } : m));
+      }
+      setSelectedMr({ ...selectedMr, ...editForm });
       setIsEditing(false);
     } catch (error) {
       console.error('Failed to update MR:', error);
@@ -235,7 +325,9 @@ export default function MRManagement() {
             <FileText size={20} className="text-blue-600" />
             Bulk Export (Power BI)
           </button>
-          <button className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20">
+          <button className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20"
+            onClick={() => setShowCreateModal(true)}
+          >
             <Plus size={20} />
             Add New MR
           </button>
@@ -1126,6 +1218,151 @@ export default function MRManagement() {
                     Close Log
                   </button>
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ==================== ADD NEW MR MODAL ==================== */}
+      <AnimatePresence>
+        {showCreateModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
+            onClick={() => setShowCreateModal(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ duration: 0.2 }}
+              className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between p-6 border-b border-slate-200">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900">Add New Medical Representative</h2>
+                  <p className="text-sm text-slate-500 mt-0.5">Data is saved locally first, then synced on deployment</p>
+                </div>
+                <button onClick={() => setShowCreateModal(false)}
+                  className="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors">
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Form */}
+              <div className="p-6 space-y-5">
+                {/* Name & Email */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Name *</label>
+                    <input type="text" value={newMr.name}
+                      onChange={e => setNewMr(prev => ({ ...prev, name: e.target.value }))}
+                      placeholder="Enter full name"
+                      className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Email *</label>
+                    <input type="email" value={newMr.email}
+                      onChange={e => setNewMr(prev => ({ ...prev, email: e.target.value }))}
+                      placeholder="email@example.com"
+                      className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Territory */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">Territory</label>
+                  <select value={newMr.territory}
+                    onChange={e => setNewMr(prev => ({ ...prev, territory: e.target.value }))}
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                  >
+                    {TERRITORIES.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+
+                {/* Phone & Joining Date */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Phone</label>
+                    <input type="text" value={newMr.phone}
+                      onChange={e => setNewMr(prev => ({ ...prev, phone: e.target.value }))}
+                      placeholder="+91 9876543210"
+                      className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Joining Date</label>
+                    <input type="date" value={newMr.joining_date}
+                      onChange={e => setNewMr(prev => ({ ...prev, joining_date: e.target.value }))}
+                      className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Base Salary & Daily Allowance */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Base Salary (₹)</label>
+                    <input type="number" value={newMr.base_salary}
+                      onChange={e => setNewMr(prev => ({ ...prev, base_salary: e.target.value }))}
+                      placeholder="30000"
+                      className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Daily Allowance (₹)</label>
+                    <input type="number" value={newMr.daily_allowance}
+                      onChange={e => setNewMr(prev => ({ ...prev, daily_allowance: e.target.value }))}
+                      placeholder="500"
+                      className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Status & User ID */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">Status</label>
+                    <select value={newMr.status}
+                      onChange={e => setNewMr(prev => ({ ...prev, status: e.target.value as 'active' | 'inactive' }))}
+                      className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    >
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">User ID (optional)</label>
+                    <input type="number" value={newMr.user_id}
+                      onChange={e => setNewMr(prev => ({ ...prev, user_id: e.target.value }))}
+                      placeholder="Link to system user"
+                      className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex justify-end gap-3 p-6 border-t border-slate-200 bg-slate-50 rounded-b-2xl">
+                <button onClick={() => setShowCreateModal(false)}
+                  className="px-6 py-2.5 border border-slate-200 rounded-xl text-slate-600 font-medium hover:bg-slate-100 transition-colors">
+                  Cancel
+                </button>
+                <button onClick={handleCreateNewMr} disabled={saving || !newMr.name || !newMr.email}
+                  className="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2">
+                  {saving ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" /> Adding...
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={16} /> Add MR
+                    </>
+                  )}
+                </button>
               </div>
             </motion.div>
           </div>

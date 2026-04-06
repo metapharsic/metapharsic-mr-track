@@ -723,6 +723,20 @@ async function startServer() {
 
   // API Routes
   app.get("/api/mrs", (req, res) => res.json(data.mrs));
+
+  app.post("/api/mrs", (req, res) => {
+    const newMr = {
+      id: nextId.mrs++,
+      ...req.body,
+      performance_score: 0,
+      total_sales: 0,
+      targets_achieved: 0,
+      targets_missed: 0,
+      created_at: new Date().toISOString()
+    };
+    data.mrs.push(newMr);
+    res.status(201).json(newMr);
+  });
   app.get("/api/products", (req, res) => res.json(data.products));
   app.get("/api/doctors", (req, res) => res.json(data.doctors));
   app.get("/api/pharmacies", (req, res) => res.json(data.pharmacies));
@@ -1859,6 +1873,14 @@ async function startServer() {
     // Mount Vite middleware first for asset/module handling
     app.use(vite.middlewares);
     
+    // Force no-cache headers for dev
+    app.use((req, res, next) => {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      next();
+    });
+
     // SPA fallback: serve index.html for all non-API/non-asset routes
     app.use((req, res, next) => {
       // Skip API routes and static files
