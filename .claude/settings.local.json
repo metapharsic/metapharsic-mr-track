@@ -70,7 +70,9 @@
       "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(f'Completed: {d.get\\(\\\\\"success\\\\\"\\)}, status: {d.get\\(\\\\\"schedule\\\\\",{}\\).get\\(\\\\\"status\\\\\"\\)}'\\)\")",
       "Bash(findstr :3000)",
       "Bash(findstr node:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(git push:*)",
+      "Bash(pkill -f \"node.*server.ts\")"
     ]
   }
 }

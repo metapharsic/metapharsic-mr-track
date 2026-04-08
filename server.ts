@@ -7,6 +7,20 @@ import { promises as fs } from "fs";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Extend Express Request type to include currentUser
+declare global {
+  namespace Express {
+    interface Request {
+      currentUser?: {
+        email: string;
+        role: 'admin' | 'manager' | 'mr' | 'viewer';
+        mr_id?: number;
+        territory?: string;
+      };
+    }
+  }
+}
+
 // In-memory data store with comprehensive dummy data for testing
 const data = {
   mrs: [
@@ -696,9 +710,54 @@ let nextId = {
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT || 3000;
+  const PORT = parseInt(process.env.PORT || '3000', 10);
 
   app.use(express.json());
+
+  // Authentication middleware for demo/production
+  // Expects: Authorization: Bearer <user_email> OR x-user-email header
+  app.use((req, res, next) => {
+    // Skip for auth endpoint itself
+    if (req.path === '/api/auth/google') return next();
+
+    const authHeader = req.headers.authorization;
+    const userEmailHeader = req.headers['x-user-email'];
+    const userEmail = authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : userEmailHeader;
+
+    if (!userEmail) {
+      // For demo, allow without auth but no user context
+      req.currentUser = null;
+      return next();
+    }
+
+    // Find user from in-memory store (or DB in production)
+    const emailToMatch = Array.isArray(userEmail) ? userEmail[0] : (userEmail || '');
+    const user = (data as any).users?.find((u: any) => u.email.toLowerCase() === emailToMatch.toLowerCase());
+    if (user) {
+      req.currentUser = user;
+    } else {
+      req.currentUser = null;
+    }
+    next();
+  });
+
+  // Territory filtering middleware
+  // For MR users, automatically filters data by their territory
+  const filterByTerritory = (user: any, items: any[], territoryField = 'territory') => {
+    if (!user || user.role === 'admin') return items;
+    if (user.role === 'mr' && user.territory) {
+      return items.filter((item: any) => item[territoryField] === user.territory);
+    }
+    return items;
+  };
+
+  const filterByMrId = (user: any, items: any[], mrIdField = 'mr_id') => {
+    if (!user || user.role === 'admin') return items;
+    if (user.role === 'mr' && user.mr_id) {
+      return items.filter((item: any) => item[mrIdField] === user.mr_id);
+    }
+    return items;
+  };
 
   // Google OAuth 2.0 verification endpoint
   app.post("/api/auth/google", async (req, res) => {
@@ -734,7 +793,16 @@ async function startServer() {
   });
 
   // API Routes
-  app.get("/api/mrs", (req, res) => res.json(data.mrs));
+
+  // GET /api/mrs - Admins see all, MRs see only their own record
+  app.get("/api/mrs", (req, res) => {
+    const user = req.currentUser;
+    let mrs = data.mrs as any[];
+    if (user?.role === 'mr' && user.mr_id) {
+      mrs = mrs.filter(mr => mr.id === user.mr_id);
+    }
+    res.json(mrs);
+  });
 
   app.post("/api/mrs", (req, res) => {
     const newMr = {
@@ -750,38 +818,107 @@ async function startServer() {
     res.status(201).json(newMr);
   });
   app.get("/api/products", (req, res) => res.json(data.products));
-  app.get("/api/doctors", (req, res) => res.json(data.doctors));
+  app.get("/api/doctors", (req, res) => {
+    const user = req.currentUser;
+    let doctors = data.doctors as any[];
+    if (user?.role === 'mr' && user.territory) {
+      doctors = doctors.filter(d => d.territory === user.territory);
+    }
+    res.json(doctors);
+  });
   app.post("/api/doctors", (req, res) => {
     const newDoctor = { id: Date.now(), ...req.body };
     data.doctors.push(newDoctor);
     res.status(201).json(newDoctor);
   });
-  app.get("/api/pharmacies", (req, res) => res.json(data.pharmacies));
+  app.get("/api/pharmacies", (req, res) => {
+    const user = req.currentUser;
+    let pharmacies = data.pharmacies as any[];
+    if (user?.role === 'mr' && user.territory) {
+      pharmacies = pharmacies.filter(p => p.territory === user.territory);
+    }
+    res.json(pharmacies);
+  });
   app.post("/api/pharmacies", (req, res) => {
     const newPharmacy = { id: Date.now(), ...req.body };
     data.pharmacies.push(newPharmacy);
     res.status(201).json(newPharmacy);
   });
-  app.get("/api/hospitals", (req, res) => res.json(data.hospitals));
+  app.get("/api/hospitals", (req, res) => {
+    const user = req.currentUser;
+    let hospitals = data.hospitals as any[];
+    if (user?.role === 'mr' && user.territory) {
+      hospitals = hospitals.filter(h => h.territory === user.territory);
+    }
+    res.json(hospitals);
+  });
   app.post("/api/hospitals", (req, res) => {
     const newHospital = { id: Date.now(), ...req.body };
     data.hospitals.push(newHospital);
     res.status(201).json(newHospital);
   });
-  app.get("/api/targets", (req, res) => res.json(data.targets));
-  app.get("/api/expenses", (req, res) => res.json(data.expenses));
-  app.get("/api/sales", (req, res) => res.json(data.sales));
-  app.get("/api/sales-forecast", (req, res) => res.json(data.sales_forecast));
-  app.get("/api/doctor-visits", (req, res) => res.json(data.doctor_visits));
-  app.get("/api/visit-schedules", (req, res) => res.json(data.visit_schedules));
-  app.get("/api/leads", (req, res) => res.json(data.leads));
-  app.get("/api/attendance", (req, res) => {
-    const mrId = req.query.mr_id ? parseInt(req.query.mr_id as string) : null;
-    if (mrId) {
-      res.json(data.attendance.filter(a => a.mr_id === mrId));
-    } else {
-      res.json(data.attendance);
+  app.get("/api/targets", (req, res) => {
+    const user = req.currentUser;
+    let targets = data.targets as any[];
+    if (user?.role === 'mr' && user.mr_id) {
+      targets = targets.filter(t => t.mr_id === user.mr_id);
     }
+    res.json(targets);
+  });
+  app.get("/api/expenses", (req, res) => {
+    const user = req.currentUser;
+    let expenses = data.expenses as any[];
+    if (user?.role === 'mr' && user.mr_id) {
+      expenses = expenses.filter(e => e.mr_id === user.mr_id);
+    }
+    res.json(expenses);
+  });
+  app.get("/api/sales", (req, res) => {
+    const user = req.currentUser;
+    let sales = data.sales as any[];
+    if (user?.role === 'mr' && user.mr_id) {
+      sales = sales.filter(s => s.mr_id === user.mr_id);
+    }
+    res.json(sales);
+  });
+  app.get("/api/sales-forecast", (req, res) => {
+    // Note: This returns static demo forecast data. In production, should filter by MR's territory.
+    res.json(data.sales_forecast);
+  });
+  app.get("/api/doctor-visits", (req, res) => {
+    const user = req.currentUser;
+    let visits = data.doctor_visits as any[];
+    if (user?.role === 'mr' && user.mr_id) {
+      visits = visits.filter(v => v.mr_id === user.mr_id);
+    }
+    res.json(visits);
+  });
+  app.get("/api/visit-schedules", (req, res) => {
+    const user = req.currentUser;
+    let schedules = data.visit_schedules as any[];
+    if (user?.role === 'mr' && user.mr_id) {
+      schedules = schedules.filter(s => s.mr_id === user.mr_id);
+    }
+    res.json(schedules);
+  });
+  app.get("/api/leads", (req, res) => {
+    const user = req.currentUser;
+    let leads = data.leads as any[];
+    if (user?.role === 'mr' && user.mr_id) {
+      leads = leads.filter(l => l.assigned_mr_id === user.mr_id);
+    }
+    res.json(leads);
+  });
+  app.get("/api/attendance", (req, res) => {
+    const user = req.currentUser;
+    let attendance = data.attendance as any[];
+    if (user?.role === 'mr' && user.mr_id) {
+      attendance = attendance.filter(a => a.mr_id === user.mr_id);
+    } else if (req.query.mr_id) {
+      const mrId = parseInt(req.query.mr_id as string);
+      attendance = attendance.filter(a => a.mr_id === mrId);
+    }
+    res.json(attendance);
   });
 
   app.post("/api/attendance/check-in", (req, res) => {
@@ -843,9 +980,16 @@ async function startServer() {
   // === Daily Call Plan ===
   // Compute the call plan for a given MR + date from schedules + entity data + past visits
   app.get("/api/daily-call-plan", (req, res) => {
-    const mrId = req.query.mr_id ? parseInt(req.query.mr_id as string) : null;
-    const date = (req.query.date as string) || new Date().toISOString().split('T')[0];
+    const user = req.currentUser;
+    let mrId: number | null = null;
 
+    if (user?.role === 'mr' && user.mr_id) {
+      mrId = user.mr_id;
+    } else if (req.query.mr_id) {
+      mrId = parseInt(req.query.mr_id as string);
+    }
+
+    const date = (req.query.date as string) || new Date().toISOString().split('T')[0];
     const schedules = data.visit_schedules.filter(
       s => s.scheduled_date === date && (!mrId || s.mr_id === mrId)
     );
@@ -966,12 +1110,21 @@ async function startServer() {
   });
 
   app.get("/api/activities", (req, res) => {
-    const mrId = req.query.mr_id ? parseInt(req.query.mr_id as string) : null;
-    const date = req.query.date as string;
-    let filtered = data.activities;
-    if (mrId) filtered = filtered.filter(a => a.mr_id === mrId);
-    if (date) filtered = filtered.filter(a => a.date === date);
-    res.json(filtered);
+    const user = req.currentUser;
+    let activities = data.activities as any[];
+    // MRs can only see their own activities
+    if (user?.role === 'mr' && user.mr_id) {
+      activities = activities.filter(a => a.mr_id === user.mr_id);
+    } else if (req.query.mr_id) {
+      // Admin can filter by mr_id
+      const mrId = parseInt(req.query.mr_id as string);
+      activities = activities.filter(a => a.mr_id === mrId);
+    }
+    const date = req.query.date as string | undefined;
+    if (date) {
+      activities = activities.filter(a => a.date === date);
+    }
+    res.json(activities);
   });
 
   app.post("/api/leads", (req, res) => {
@@ -1035,8 +1188,15 @@ async function startServer() {
 
   // === Visit Recordings ===
   app.get("/api/visit-recordings", (req, res) => {
-    const mrId = req.query.mr_id ? parseInt(req.query.mr_id as string) : null;
-    res.json(mrId ? data.visit_recordings.filter(v => v.mr_id === mrId) : data.visit_recordings);
+    const user = req.currentUser;
+    let recordings = data.visit_recordings as any[];
+    if (user?.role === 'mr' && user.mr_id) {
+      recordings = recordings.filter(r => r.mr_id === user.mr_id);
+    } else if (req.query.mr_id) {
+      const mrId = parseInt(req.query.mr_id as string);
+      recordings = recordings.filter(r => r.mr_id === mrId);
+    }
+    res.json(recordings);
   });
 
   app.post("/api/visit-recordings", (req, res) => {
@@ -1071,7 +1231,15 @@ async function startServer() {
   });
 
   // === Approval Requests ===
-  app.get("/api/approval-requests", (req, res) => res.json(data.approval_requests));
+  app.get("/api/approval-requests", (req, res) => {
+    const user = req.currentUser;
+    let requests = data.approval_requests as any[];
+    if (user?.role === 'mr' && user.mr_id) {
+      // MRs only see their own approval requests
+      requests = requests.filter(r => r.mr_id === user.mr_id);
+    }
+    res.json(requests);
+  });
 
   app.post("/api/approval-requests", (req, res) => {
     const newReq = { id: nextId.approval_requests++, ...req.body };
@@ -1096,7 +1264,22 @@ async function startServer() {
   });
 
   // === Entity Credits ===
-  app.get("/api/entity-credits", (req, res) => res.json(data.entity_credits));
+  app.get("/api/entity-credits", (req, res) => {
+    // Admin sees all; MRs see credits for entities in their territory only
+    // This requires linking entities to territories via doctors/pharmacies/hospitals
+    const user = req.currentUser;
+    if (user?.role === 'mr' && user.territory) {
+      // Get entity names from doctors/pharmacies/hospitals in this territory
+      const territoryDoctors = (data.doctors as any[]).filter(d => d.territory === user.territory).map(d => d.name);
+      const territoryPharmacies = (data.pharmacies as any[]).filter(p => p.territory === user.territory).map(p => p.name);
+      const territoryHospitals = (data.hospitals as any[]).filter(h => h.territory === user.territory).map(h => h.name);
+      const territoryEntities = [...territoryDoctors, ...territoryPharmacies, ...territoryHospitals];
+
+      const credits = (data.entity_credits as any[]).filter(c => territoryEntities.includes(c.entity_name));
+      return res.json(credits);
+    }
+    res.json(data.entity_credits);
+  });
 
   app.patch("/api/entity-credits/:id", (req, res) => {
     const id = parseInt(req.params.id);
@@ -1110,7 +1293,17 @@ async function startServer() {
   });
 
   // === MR Live Locations ===
-  app.get("/api/mr-locations", (req, res) => res.json(data.mr_locations));
+  app.get("/api/mr-locations", (req, res) => {
+    const user = req.currentUser;
+    let locations = data.mr_locations as any[];
+    if (user?.role === 'mr' && user.mr_id) {
+      locations = locations.filter(l => l.mr_id === user.mr_id);
+    } else if (req.query.mr_id) {
+      const mrId = parseInt(req.query.mr_id as string);
+      locations = locations.filter(l => l.mr_id === mrId);
+    }
+    res.json(locations);
+  });
 
   app.post("/api/mr-locations", (req, res) => {
     const mr = data.mrs.find(m => m.id === req.body.mr_id);
@@ -1128,9 +1321,15 @@ async function startServer() {
 
   // === Notifications ===
   app.get("/api/notifications", (req, res) => {
-    const mrId = req.query.mr_id ? parseInt(req.query.mr_id as string) : null;
-    if (mrId) res.json(data.notifications.filter(n => n.mr_id === mrId));
-    else res.json(data.notifications);
+    const user = req.currentUser;
+    let notifications = data.notifications as any[];
+    if (user?.role === 'mr' && user.mr_id) {
+      notifications = notifications.filter(n => n.mr_id === user.mr_id);
+    } else if (req.query.mr_id) {
+      const mrId = parseInt(req.query.mr_id as string);
+      notifications = notifications.filter(n => n.mr_id === mrId);
+    }
+    res.json(notifications);
   });
 
   app.post("/api/send-email", async (req, res) => {
@@ -1150,8 +1349,14 @@ async function startServer() {
 
   // MR Field Tracking - Visit Records
   app.get("/api/visit-records", (req, res) => {
-    const mrId = req.query.mr_id ? Number(req.query.mr_id) : null;
-    const records = mrId ? data.visit_records.filter(v => v.mr_id === mrId) : data.visit_records;
+    const user = req.currentUser;
+    let records = data.visit_records as any[];
+    if (user?.role === 'mr' && user.mr_id) {
+      records = records.filter(v => v.mr_id === user.mr_id);
+    } else if (req.query.mr_id) {
+      const mrId = Number(req.query.mr_id);
+      records = records.filter(v => v.mr_id === mrId);
+    }
     res.json(records);
   });
 
@@ -1201,16 +1406,30 @@ async function startServer() {
   });
 
   // Missed Visits - admin view
-  app.get("/api/missed-visits", (req, res) => res.json(data.missed_visits));
+  app.get("/api/missed-visits", (req, res) => {
+    const user = req.currentUser;
+    let missed = data.missed_visits as any[];
+    if (user?.role === 'mr' && user.mr_id) {
+      missed = missed.filter(m => m.mr_id === user.mr_id);
+    }
+    res.json(missed);
+  });
 
   // Daily Summary for MR
   app.get("/api/daily-summaries", (req, res) => {
-    const mrId = req.query.mr_id ? Number(req.query.mr_id) : null;
-    const date = req.query.date ? String(req.query.date) : new Date().toISOString().split('T')[0];
+    const user = req.currentUser;
+    let mrId: number | null = null;
+
+    if (user?.role === 'mr' && user.mr_id) {
+      mrId = user.mr_id;
+    } else if (req.query.mr_id) {
+      mrId = Number(req.query.mr_id);
+    }
 
     if (!mrId) { return res.status(400).json({ error: 'mr_id required' }); }
 
-    const todayRecords = data.visit_records.filter(v => v.mr_id === mrId && v.created_at && v.created_at.startsWith(date));
+    const date = req.query.date ? String(req.query.date) : new Date().toISOString().split('T')[0];
+    const todayRecords = (data.visit_records as any[]).filter(v => v.mr_id === mrId && v.created_at && v.created_at.startsWith(date));
     const completed = todayRecords.filter(v => v.status === 'completed');
     const missed = todayRecords.filter(v => v.is_missed || v.status === 'missed');
     const todaySchedules = data.visit_schedules.filter(s => s.mr_id === mrId && s.scheduled_date === date);
@@ -1752,7 +1971,8 @@ async function startServer() {
         ? Math.round((totalEntitiesThisMonth / totalEntitiesAvailable) * 100)
         : 0;
 
-      const responseData = {
+      const user = req.currentUser;
+      let responseData: any = {
         total_doctors: (data.doctors as any).length,
         total_pharmacies: (data.pharmacies as any).length,
         total_hospitals: (data.hospitals as any).length,
@@ -1797,6 +2017,33 @@ async function startServer() {
         ]
       };
 
+      // Filter for MR users: only show their own performance and territory entities
+      if (user?.role === 'mr' && user.mr_id) {
+        const myMr = data.mrs.find((m: any) => m.id === user.mr_id);
+        if (myMr) {
+          responseData.mr_performance = mrPerformance.filter((p: any) => p.mr_id === user.mr_id);
+          // Filter entities to only those in this MR's territory
+          responseData.entities = responseData.entities.filter((entity: any) => {
+            // For doctors, check territory match
+            if (entity.type === 'Doctor') {
+              const doctor = data.doctors.find((d: any) => `Dr. ${d.name}` === entity.name);
+              return doctor && doctor.territory === myMr.territory;
+            }
+            // For pharmacies
+            if (entity.type === 'Pharmacy') {
+              const pharmacy = data.pharmacies.find((p: any) => p.name === entity.name);
+              return pharmacy && pharmacy.territory === myMr.territory;
+            }
+            // For hospitals
+            if (entity.type === 'Hospital') {
+              const hospital = data.hospitals.find((h: any) => h.name === entity.name);
+              return hospital && hospital.territory === myMr.territory;
+            }
+            return false;
+          });
+        }
+      }
+
       console.log(`✅ Metrics calculated successfully!`);
       console.log(`   Total Visits: ${totalVisitsThisMonth}`);
       console.log(`   Doctors Reached: ${allDoctorsReachedThisMonth}/${(data.doctors as any).length}`);
@@ -1826,6 +2073,31 @@ async function startServer() {
 
       const results: any[] = [];
       const limit = parseInt(req.query.limit as string) || 50;
+      const user = req.currentUser;
+
+      // Filter datasets based on user role
+      let searchDoctors = data.doctors as any[];
+      let searchPharmacies = data.pharmacies as any[];
+      let searchHospitals = data.hospitals as any[];
+      let searchLeads = data.leads as any[];
+      let searchSales = data.sales as any[];
+      let searchExpenses = data.expenses as any[];
+      let searchMrs = data.mrs as any[];
+
+      if (user?.role === 'mr' && user.territory) {
+        // MRs only search within their territory
+        searchDoctors = searchDoctors.filter(d => d.territory === user.territory);
+        searchPharmacies = searchPharmacies.filter(p => p.territory === user.territory);
+        searchHospitals = searchHospitals.filter(h => h.territory === user.territory);
+      }
+      if (user?.role === 'mr' && user.mr_id) {
+        // MRs only see their own sales, expenses, leads
+        searchLeads = searchLeads.filter(l => l.assigned_mr_id === user.mr_id);
+        searchSales = searchSales.filter(s => s.mr_id === user.mr_id);
+        searchExpenses = searchExpenses.filter(e => e.mr_id === user.mr_id);
+        // MRs can see their own record and maybe admins? For now, only themselves
+        searchMrs = searchMrs.filter(m => m.id === user.mr_id);
+      }
 
       const score = (text: string, q: string): number => {
         const t = text.toLowerCase();
@@ -1840,7 +2112,7 @@ async function startServer() {
       };
 
       // Search MRs
-      (data.mrs as any[]).forEach(mr => {
+      searchMrs.forEach(mr => {
         const names = [mr.name, mr.territory, mr.email, mr.phone, mr.status].join(" ");
         const s = Math.max(score(mr.name, query), score(mr.territory, query), score(mr.email, query), score(mr.phone || "", query));
         if (s > 0 || names.toLowerCase().includes(query)) {
