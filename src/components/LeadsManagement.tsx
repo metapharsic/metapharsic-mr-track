@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import { Lead, MR, Visit } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 import {
   UserPlus, MessageSquare, Calendar,
   CheckCircle2, Zap, Loader2, User, MapPin,
@@ -22,6 +23,7 @@ interface AnalysisResult {
 }
 
 export default function LeadsManagement() {
+  const { user } = useAuth();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [mrs, setMrs] = useState<MR[]>([]);
   const [visits, setVisits] = useState<Visit[]>([]);
@@ -37,7 +39,11 @@ export default function LeadsManagement() {
       api.mrs.getAll(),
       api.visits.getAll()
     ]).then(([l, m, v]) => {
-      setLeads(l);
+      let filtered = l;
+      if (user?.role === 'mr') {
+        filtered = l.filter((lead: Lead) => lead.mr_id === user.mr_id || lead.assigned_mr_id === user.mr_id || !lead.assigned_mr_id);
+      }
+      setLeads(filtered);
       setMrs(m);
       setVisits(v);
       setLoading(false);

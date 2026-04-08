@@ -82,7 +82,7 @@ const navItems = [
   { icon: Stethoscope, label: 'Healthcare Directory', path: '/directory', permission: 'directory.view' },
   { icon: TrendingUp, label: 'Sales Tracking', path: '/sales', permission: 'sales.view' },
   { icon: Receipt, label: 'Expense Manager', path: '/expenses', permission: 'expenses.view' },
-  { icon: Calendar, label: 'Visit Schedule', path: '/schedule', permission: 'schedule.view' },
+  { icon: Calendar, label: 'Daily Call Plan', path: '/schedule', permission: 'schedule.view' },
   { icon: UserPlus, label: 'Leads Management', path: '/leads', permission: 'leads.view' },
   { icon: LayoutGrid, label: 'MR Dashboard', path: '/mr-dashboard', permission: 'mr-dashboard.view' },
   { icon: BarChart3, label: 'Performance', path: '/performance', permission: 'performance.view' },

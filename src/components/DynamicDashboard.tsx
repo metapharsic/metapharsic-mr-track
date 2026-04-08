@@ -74,15 +74,25 @@ export default function DynamicDashboard() {
       api.expenses.getAll().catch(() => []),
       api.leads.getAll().catch(() => []),
     ]).then(([mrsData, salesData, targetsData, forecastData, productsData, doctorsData, pharmaciesData, expensesData, leadsData]) => {
+      let filteredSales = salesData || [];
+      let filteredTargets = targetsData || [];
+      let filteredExpenses = expensesData || [];
+      let filteredLeads = leadsData || [];
+      if (user?.role === 'mr') {
+        filteredSales = filteredSales.filter((s: Sale) => s.mr_id === user.mr_id);
+        filteredTargets = filteredTargets.filter((t: any) => t.mr_id === user.mr_id);
+        filteredExpenses = filteredExpenses.filter((e: any) => e.mr_id === user.mr_id);
+        filteredLeads = filteredLeads.filter((l: any) => l.mr_id === user.mr_id || l.assigned_mr_id === user.mr_id || !l.assigned_mr_id);
+      }
       setMrs(mrsData || []);
-      setSales(salesData || []);
-      setTargets(targetsData || []);
+      setSales(filteredSales);
+      setTargets(filteredTargets);
       setForecast(forecastData || []);
       setProducts(productsData || []);
       setDoctors(doctorsData || []);
       setPharmacies(pharmaciesData || []);
-      setExpenses(expensesData || []);
-      setLeads(leadsData || []);
+      setExpenses(filteredExpenses);
+      setLeads(filteredLeads);
       setTimeout(() => setLoading(false), 300);
     }).catch(() => setLoading(false));
   }, []);

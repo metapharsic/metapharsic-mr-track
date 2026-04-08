@@ -41,6 +41,109 @@ export default function HealthcareDirectory() {
   const [editableTime, setEditableTime] = useState('10:00');
   const [editablePurpose, setEditablePurpose] = useState('AI Scheduled Visit');
 
+  // Add entry modal state
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addType, setAddType] = useState<'doctor' | 'pharmacy' | 'hospital'>(type === 'doctor' || type === 'pharmacy' || type === 'hospital' ? type : 'doctor');
+  const [formData, setFormData] = useState<any>({});
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const resetAddForm = () => { setFormData({}); setFormErrors({}); setIsSubmitting(false); };
+
+  const openAddFor = (et: 'doctor' | 'pharmacy' | 'hospital') => { setAddType(et); resetAddForm(); setShowAddModal(true); if (type === 'all') setType(et); };
+
+  const handleFormChange = (field: string, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    if (formErrors[field]) setFormErrors(prev => { const n = { ...prev }; delete n[field]; return n; });
+  };
+
+  const validateForm = () => {
+    const errs: Record<string, string> = {};
+    if (!formData.name?.trim()) errs.name = 'Name is required';
+    if (!formData.address?.trim()) errs.address = 'Address is required';
+    if (addType === 'doctor') {
+      if (!formData.clinic?.trim()) errs.clinic = 'Clinic/Hospital is required';
+      if (!formData.specialty?.trim()) errs.specialty = 'Specialty is required';
+    } else if (addType === 'pharmacy') {
+      if (!formData.owner_name?.trim()) errs.owner_name = 'Owner name is required';
+    } else {
+      if (!formData.type?.trim()) errs.type = 'Hospital type is required';
+      if (!formData.contact_person?.trim()) errs.contact_person = 'Contact person is required';
+    }
+    setFormErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const submitAddEntity = async () => {
+    if (!validateForm()) return;
+    setIsSubmitting(true);
+    try {
+      const base = { name: formData.name.trim(), phone: formData.phone || '+91 00000 00000', email: formData.email || '', address: formData.address.trim(), territory: formData.territory || '', tier: formData.tier || 'B', status: 'active' as const, area: formData.territory || '' };
+      let ep: string, payload: any;
+      if (addType === 'doctor') {
+        ep = 'doctors'; payload = { ...base, clinic: formData.clinic?.trim() || '', specialty: formData.specialty?.trim() || '', potential: formData.potential || 'medium', total_visits: 0, total_orders: 0, total_value: 0, rating: 0, timings: formData.timings || '9AM-5PM', qualification: formData.qualification || '', dept_opd: formData.dept_opd || '', mr_visit_window: formData.mr_visit_window || '', notes: formData.notes || '' };
+      } else if (addType === 'pharmacy') {
+        ep = 'pharmacies'; payload = { ...base, owner_name: formData.owner_name?.trim() || '', credit_limit: Number(formData.credit_limit) || 0, credit_days: Number(formData.credit_days) || 30, total_purchases: 0, total_value: 0, rating: 0, notes: formData.notes || '', shop_hours: formData.shop_hours || '9AM-9PM', mr_visit_window: formData.mr_visit_window || '', type: formData.type || '', discount_notes: formData.discount_notes || '' };
+      } else {
+        ep = 'hospitals'; payload = { ...base, type: formData.type?.trim() || '', contact_person: formData.contact_person?.trim() || '', bed_count: Number(formData.bed_count) || 0, credit_limit: Number(formData.credit_limit) || 0, credit_days: Number(formData.credit_days) || 45, total_purchases: 0, total_value: 0, rating: 0, notes: formData.notes || '' };
+      }
+      const res = await fetch(`/api/${ep}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!res.ok) throw new Error('Failed');
+      const created = await res.json();
+      if (addType === 'doctor') setDoctors(p => [...p, created as Doctor]);
+      else if (addType === 'pharmacy') setPharmacies(p => [...p, created as Pharmacy]);
+      else setHospitals(p => [...p, created as Hospital]);
+      setToastMessage(`✓ ${addType.charAt(0).toUpperCase() + addType.slice(1)} "${created.name}" added!`);
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 4000);
+      setShowAddModal(false);
+      resetAddForm();
+    } catch (e) {
+      console.error(e);
+      setToastMessage('Failed to add entry.');
+      setShowToast(true);
+      setTimeout(() => setShowToast(false), 4000);
+      setIsSubmitting(false);
+    }
+  };
+
+  const renderField = (label: string, field: string, opts: any = {}) => {
+    const isSelect = opts.type === 'select';
+    const isTextarea = opts.type === 'textarea';
+    const req = opts.required !== false;
+    const sel = (vals: string[]) => vals.map(v => <option key={v} value={v}>{v}</option>);
+    return (
+      <div>
+        {isSelect ? (
+          <div>
+            <select value={formData[field] || ''} onChange={e => handleFormChange(field, e.target.value)}
+              className={`w-full px-4 py-2.5 border rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 ${formErrors[field] ? 'border-red-300 bg-red-50' : 'border-slate-200'}`}>
+              <option value="">{label}</option>
+              {field === 'territory' && sel(terrs)}
+              {field === 'tier' && sel(['A', 'B', 'C'])}
+              {field === 'potential' && sel(['high', 'medium', 'low'])}
+            </select>
+            {formErrors[field] && <p className="text-red-500 text-xs mt-1">{formErrors[field]}</p>}
+          </div>
+        ) : (
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-1.5">{label}{req && <span className="text-red-400">*</span>}</label>
+            {isTextarea ? (
+              <textarea value={formData[field] || ''} onChange={e => handleFormChange(field, e.target.value)} placeholder={opts.placeholder || ''}
+                className={`w-full px-4 py-2.5 border rounded-xl text-sm bg-white min-h-[60px] focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 ${formErrors[field] ? 'border-red-300 bg-red-50' : 'border-slate-200'}`} />
+            ) : (
+              <input type={opts.inputType || 'text'} value={formData[field] || ''} onChange={e => handleFormChange(field, e.target.value)} placeholder={opts.placeholder || ''}
+                className={`w-full px-4 py-2.5 border rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 ${formErrors[field] ? 'border-red-300 bg-red-50' : 'border-slate-200'}`} />
+            )}
+            {formErrors[field] && <p className="text-red-500 text-xs mt-1">{formErrors[field]}</p>}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const terrs = Array.from(new Set([...doctors.map(d => d.territory || d.area), ...pharmacies.map(p => p.territory || p.area), ...hospitals.map(h => h.territory || h.area)].filter(Boolean))).sort();
+
   const handleSchedule = (item: any) => {
     // Find an MR for this territory to assign the visit
     const territory = item.territory || item.area;
@@ -422,7 +525,10 @@ export default function HealthcareDirectory() {
           <h2 className="text-3xl font-bold text-slate-900">Healthcare Directory</h2>
           <p className="text-slate-500 mt-1">Comprehensive database of healthcare providers and partners.</p>
         </div>
-        <button className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20">
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20"
+        >
           <Plus size={20} />
           Add New Entry
         </button>
@@ -1076,6 +1182,82 @@ export default function HealthcareDirectory() {
                   <p className="text-xs text-amber-800">Please select an MR to proceed</p>
                 </div>
               )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Add Entry Modal */}
+      <AnimatePresence>
+        {showAddModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4"
+            onClick={() => { setShowAddModal(false); resetAddForm(); }}>
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col"
+              onClick={e => e.stopPropagation()}>
+              <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900">Add New Entry</h2>
+                  <p className="text-sm text-slate-400 mt-0.5">Add a new {addType} to the directory</p>
+                </div>
+                <button onClick={() => { setShowAddModal(false); resetAddForm(); }}
+                  className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-400 hover:text-slate-600"><X size={20} /></button>
+              </div>
+
+              <div className="px-6 pt-4 flex gap-2">
+                {(['doctor', 'pharmacy', 'hospital'] as const).map(et => (
+                  <button key={et} onClick={() => { setAddType(et); resetAddForm(); }}
+                    className={`flex-1 px-3 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${addType === et ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                    {et}
+                  </button>
+                ))}
+              </div>
+
+              <div className="px-6 py-4 overflow-y-auto flex-1 space-y-3">
+                {renderField('Name', 'name', { placeholder: addType === 'doctor' ? 'Dr. Full Name' : addType === 'pharmacy' ? 'Pharmacy Name' : 'Hospital Name' })}
+                {renderField('Address', 'address', { placeholder: 'Full address' })}
+                {renderField('Phone', 'phone', { required: false, placeholder: '+91 XXXXX XXXXX' })}
+                {renderField('Email', 'email', { required: false, placeholder: 'email@example.com' })}
+                {renderField('Select Territory', 'territory', { type: 'select' })}
+                {renderField('Select Tier', 'tier', { type: 'select' })}
+
+                {addType === 'doctor' && (<>
+                  {renderField('Clinic / Hospital', 'clinic', { placeholder: 'Associated clinic/hospital' })}
+                  {renderField('Specialty', 'specialty', { placeholder: 'e.g., General Medicine, Cardiology' })}
+                  {renderField('Select Potential', 'potential', { type: 'select' })}
+                  {renderField('Qualification', 'qualification', { required: false, placeholder: 'e.g., MBBS, MD' })}
+                  {renderField('Timings', 'timings', { required: false, placeholder: 'e.g., 9AM-5PM Mon-Sat' })}
+                  {renderField('MR Visit Window', 'mr_visit_window', { required: false, placeholder: 'e.g., 10AM-12PM' })}
+                  {renderField('Notes', 'notes', { required: false, type: 'textarea', placeholder: 'Any additional notes' })}
+                </>)}
+
+                {addType === 'pharmacy' && (<>
+                  {renderField('Owner Name', 'owner_name', { placeholder: 'Owner full name' })}
+                  {renderField('Type', 'type', { required: false, placeholder: 'e.g., Retail, Wholesale' })}
+                  {renderField('Shop Hours', 'shop_hours', { required: false, placeholder: 'e.g., 9AM-9PM' })}
+                  {renderField('MR Visit Window', 'mr_visit_window', { required: false, placeholder: 'e.g., 10AM-12PM' })}
+                  {renderField('Notes', 'notes', { required: false, type: 'textarea', placeholder: 'Discounts, offers, etc.' })}
+                </>)}
+
+                {addType === 'hospital' && (<>
+                  {renderField('Hospital Type', 'type', { placeholder: 'e.g., Multi-Speciality, Dental' })}
+                  {renderField('Contact Person', 'contact_person', { placeholder: 'Full name' })}
+                  {renderField('Bed Count', 'bed_count', { required: false, inputType: 'number', placeholder: '0' })}
+                  {renderField('Notes', 'notes', { required: false, type: 'textarea', placeholder: 'Any additional notes' })}
+                </>)}
+              </div>
+
+              <div className="px-6 py-4 border-t border-slate-100 flex gap-3">
+                <button onClick={() => { setShowAddModal(false); resetAddForm(); }}
+                  className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-50 transition-all">
+                  Cancel
+                </button>
+                <button onClick={submitAddEntity} disabled={isSubmitting}
+                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2">
+                  {isSubmitting ? (<><Loader2 size={16} className="animate-spin" />Saving...</>) : 'Add Entry'}
+                </button>
+              </div>
             </motion.div>
           </motion.div>
         )}

@@ -121,7 +121,7 @@ export default function NotificationPanel() {
           </div>
         ) : (
           notifications.map((notification) => {
-            const Icon = typeIcons[notification.type];
+            const Icon = typeIcons[notification.type] || Info;
             return (
               <div
                 key={notification.id}

@@ -14,7 +14,7 @@ const ProductPortfolio = lazy(() => import('./components/ProductPortfolio'));
 const HealthcareDirectory = lazy(() => import('./components/HealthcareDirectory'));
 const SalesTracking = lazy(() => import('./components/SalesTracking'));
 const ExpenseManager = lazy(() => import('./components/ExpenseManager'));
-const VisitSchedule = lazy(() => import('./components/VisitSchedule'));
+const DailyCallPlan = lazy(() => import('./components/DailyCallPlan'));
 const LeadsManagement = lazy(() => import('./components/LeadsManagement'));
 const MRDashboard = lazy(() => import('./components/MRDashboard'));
 const DataManagement = lazy(() => import('./components/DataManagement'));
@@ -173,7 +173,7 @@ function AppContent() {
               <Route path="/directory" element={<ProtectedRoute requiredPermission="directory.view"><HealthcareDirectory /></ProtectedRoute>} />
               <Route path="/sales" element={<ProtectedRoute requiredPermission="sales.view"><SalesTracking /></ProtectedRoute>} />
               <Route path="/expenses" element={<ProtectedRoute requiredPermission="expenses.view"><ExpenseManager /></ProtectedRoute>} />
-              <Route path="/schedule" element={<ProtectedRoute requiredPermission="schedule.view"><VisitSchedule /></ProtectedRoute>} />
+              <Route path="/schedule" element={<ProtectedRoute requiredPermission="schedule.view"><DailyCallPlan /></ProtectedRoute>} />
               <Route path="/leads" element={<ProtectedRoute requiredPermission="leads.view"><LeadsManagement /></ProtectedRoute>} />
               <Route path="/mr-dashboard" element={<ProtectedRoute requiredPermission="mr-dashboard.view"><MRDashboard /></ProtectedRoute>} />
               <Route path="/data-management" element={<ProtectedRoute requiredPermission="data.view"><DataManagement /></ProtectedRoute>} />

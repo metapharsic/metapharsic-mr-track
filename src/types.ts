@@ -409,3 +409,38 @@ export interface MissedVisitAlert {
   delivery_status: 'sent' | 'delivered' | 'acknowledged';
   miss_reason?: string;
 }
+
+export interface DailyCallPlan {
+  id: number;
+  mr_id: number;
+  schedule_id?: number;
+  doctor_id?: number;
+  entity_type: 'doctor' | 'chemist' | 'hospital';
+  entity_name: string;
+  clinic?: string;
+  tier: 'A' | 'B' | 'C';
+  area?: string;
+  phone?: string;
+  planned_time: string;
+  purpose: string;
+  priority: 'high' | 'medium' | 'low';
+  status: 'planned' | 'in_progress' | 'completed' | 'missed' | 'skipped';
+  days_since_last_visit: number;
+  last_visit_date?: string;
+  recommended_frequency?: string;
+  visit_outcome?: VisitOutcome;
+  notes?: string;
+}
+
+export interface VisitOutcome {
+  check_in_time: string;
+  check_out_time?: string;
+  speaking_time: number;
+  products_detailed: string;
+  doctor_feedback: string;
+  samples_given: string;
+  order_value: number;
+  order_product?: string;
+  next_followup?: string;
+  conversation_summary: string;
+}

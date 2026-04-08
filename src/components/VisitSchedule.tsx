@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import { Visit, MR, Doctor, Pharmacy, Hospital } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 import {
   Calendar as CalendarIcon, Clock, MapPin,
   User, ChevronRight, Plus, Filter,
@@ -14,6 +15,7 @@ import { geminiService } from '../services/geminiService';
 import AIVisitInspector from './AIVisitInspector';
 
 export default function VisitSchedule() {
+  const { user } = useAuth();
   const [schedules, setSchedules] = useState<any[]>([]);
   const [mrs, setMrs] = useState<MR[]>([]);
   const [visits, setVisits] = useState<Visit[]>([]);
@@ -51,7 +53,11 @@ export default function VisitSchedule() {
       api.pharmacies.getAll().catch(() => []),
       api.hospitals.getAll().catch(() => []),
     ]).then(([s, m, v, d, p, h]) => {
-      setSchedules(s);
+      let filtered = s;
+      if (user?.role === 'mr') {
+        filtered = filtered.filter((sched: any) => sched.mr_id === user.mr_id);
+      }
+      setSchedules(filtered);
       setMrs(m);
       setVisits(v);
       setDoctors(d || []);

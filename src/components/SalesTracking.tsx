@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import { Sale, Product, MR } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 import {
   Search, Filter, Plus, Download,
   TrendingUp, Calendar, User, Brain,
@@ -18,6 +19,7 @@ import {
 const COLORS = ['#2563eb', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#06b6d4', '#f97316'];
 
 export default function SalesTracking() {
+  const { user } = useAuth();
   const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [mrs, setMrs] = useState<MR[]>([]);
@@ -41,7 +43,11 @@ export default function SalesTracking() {
       api.products.getAll(),
       api.mrs.getAll()
     ]).then(([s, p, m]) => {
-      setSales(s);
+      let filtered = s || [];
+      if (user?.role === 'mr') {
+        filtered = filtered.filter((sale: Sale) => sale.mr_id === user.mr_id);
+      }
+      setSales(filtered);
       setProducts((p || []) as Product[]);
       setMrs(m || []);
       setLoading(false);
@@ -72,14 +78,12 @@ export default function SalesTracking() {
       amount,
     }));
 
-  // AI Insights: top performing MRs
   const mrPerformance = mrs.reduce((acc: Array<{ name: string; sales: number }>, mr: MR) => {
     const mrSales = sales.filter(s => s.mr_name === mr.name || s.mr_id === mr.id).reduce((sum, s) => sum + s.amount, 0);
     acc.push({ name: mr.name, sales: mrSales });
     return acc;
   }, []).sort((a, b) => b.sales - a.sales).slice(0, 8);
 
-  // AI Insights: product mix pie
   const productMix = products.slice(0, 6).map(p => {
     const pSales = sales.filter(s => s.product_name === p.name).reduce((sum, s) => sum + s.quantity, 0);
     return { name: p.name.length > 15 ? p.name.substring(0, 15) + '...' : p.name, value: pSales };
@@ -103,7 +107,7 @@ export default function SalesTracking() {
     });
   }
 
-  if (mrPerformance.length > 0) {
+  if (mrPerformance.length > 0 && user?.role !== 'mr') {
     const topMR = mrPerformance[0];
     aiInsights.push({
       icon: Target, title: `Top Performer: ${topMR.name}`,
@@ -363,7 +367,7 @@ Provide a concise, actionable response with specific recommendations.`;
                 ))}
               </div>
               {/* Charts Row */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div className={cn("grid gap-4 mb-4", user?.role === 'mr' ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1 md:grid-cols-3")}>
                 {/* Revenue Trend */}
                 <div className="bg-slate-800 rounded-xl p-4">
                   <p className="text-xs font-medium text-slate-400 mb-2">Monthly Revenue Trend</p>
@@ -374,18 +378,6 @@ Provide a concise, actionable response with specific recommendations.`;
                       <Tooltip contentStyle={{ borderRadius: 8, background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0' }} />
                       <Line type="monotone" dataKey="amount" stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
                     </LineChart>
-                  </ResponsiveContainer>
-                </div>
-                {/* MR Leaderboard */}
-                <div className="bg-slate-800 rounded-xl p-4">
-                  <p className="text-xs font-medium text-slate-400 mb-2">MR Sales Leaderboard</p>
-                  <ResponsiveContainer width="100%" height={160}>
-                    <BarChart data={mrPerformance}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                      <XAxis dataKey="name" stroke="#64748b" fontSize={9} />
-                      <Tooltip contentStyle={{ borderRadius: 8, background: '#1e293b', border: '1px solid #334155', color: '#e2e8f0' }} />
-                      <Bar dataKey="sales" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
-                    </BarChart>
                   </ResponsiveContainer>
                 </div>
                 {/* Product Distribution */}
@@ -597,6 +589,7 @@ Provide a concise, actionable response with specific recommendations.`;
                     />
                   </div>
                 </div>
+                {user?.role !== 'mr' && (
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-1.5">MR Assigned</label>
                   <select value={newSale.mr_name}
@@ -607,6 +600,7 @@ Provide a concise, actionable response with specific recommendations.`;
                     {mrs.map(mr => <option key={mr.id} value={mr.name}>{mr.name}</option>)}
                   </select>
                 </div>
+                )}
               </div>
               <div className="flex justify-end gap-3 p-6 border-t border-slate-200 bg-slate-50 rounded-b-2xl">
                 <button onClick={() => setShowNewSale(false)}

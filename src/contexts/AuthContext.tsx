@@ -34,7 +34,6 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
   ],
   mr: [
     'dashboard.view',
-    'mrs.view',
     'products.view',
     'directory.view',
     'sales.view', 'sales.create',

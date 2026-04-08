@@ -385,7 +385,14 @@ const data = {
     { id: 13, mr_id: 1, doctor_id: 15, doctor_name: "Dr. Ajit", clinic: "Ayu Health", scheduled_date: "2026-03-30", scheduled_time: "14:00", purpose: "AI Scheduled Visit", priority: "medium", status: "pending", estimated_duration: 30, notes: "Follow-up required" },
     { id: 14, mr_id: 4, doctor_id: 29, doctor_name: "Dr. Guru N. Reddy", clinic: "Continental Hospitals", scheduled_date: "2026-03-15", scheduled_time: "11:00", purpose: "Product presentation", priority: "high", status: "completed", estimated_duration: 45, notes: "Excellent engagement" },
     { id: 15, mr_id: 5, hospital_id: 5, hospital_name: "Global Hospitals", scheduled_date: "2026-03-17", scheduled_time: "10:00", purpose: "Hospital partnership discussion", priority: "high", status: "completed", estimated_duration: 50, notes: "Negotiating terms" },
-    { id: 16, mr_id: 4, pharmacy_id: 1, pharmacy_name: "Sri Vasavi Medical Hall", scheduled_date: "2026-03-09", scheduled_time: "15:00", purpose: "Retail pharmacy stock visit", priority: "medium", status: "completed", estimated_duration: 20, notes: "Restocked best sellers" }
+    { id: 16, mr_id: 4, pharmacy_id: 1, pharmacy_name: "Sri Vasavi Medical Hall", scheduled_date: "2026-03-09", scheduled_time: "15:00", purpose: "Retail pharmacy stock visit", priority: "medium", status: "completed", estimated_duration: 20, notes: "Restocked best sellers" },
+    { id: 17, mr_id: 1, doctor_id: 5, doctor_name: "Dr. Vikram Singh", clinic: "Singh Ortho & Spine Care", scheduled_date: "2026-04-06", scheduled_time: "11:00", purpose: "Ortho product presentation - Bone health range", priority: "high", status: "pending", estimated_duration: 45, notes: "Prepare samples for OrthoFlex and Calcium supplements" },
+    { id: 18, mr_id: 1, doctor_id: 10, doctor_name: "Dr. V. Prasad", clinic: "Whitus Hospitals", scheduled_date: "2026-04-06", scheduled_time: "10:00", purpose: "Quarterly product review - Cardiac range", priority: "medium", status: "completed", estimated_duration: 30, notes: "Follow up on previous order" },
+    { id: 19, mr_id: 2, doctor_id: 20, doctor_name: "Dr. K. S. Rao", clinic: "Care Hospitals", scheduled_date: "2026-04-06", scheduled_time: "14:00", purpose: "Diabetes product briefing", priority: "high", status: "pending", estimated_duration: 35, notes: "New Gluconorm samples" },
+    { id: 20, mr_id: 2, pharmacy_id: 18, pharmacy_name: "MedPlus Nacharam", scheduled_date: "2026-04-06", scheduled_time: "10:30", purpose: "Monthly stock assessment", priority: "medium", status: "pending", estimated_duration: 25, notes: "Review inventory levels" },
+    { id: 21, mr_id: 3, doctor_id: 35, doctor_name: "Dr. Anitha", clinic: "Anitha Maternity Home", scheduled_date: "2026-04-06", scheduled_time: "10:30", purpose: "Maternity vitamin range presentation", priority: "high", status: "pending", estimated_duration: 40, notes: "Bring brochures" },
+    { id: 22, mr_id: 3, hospital_id: 1, hospital_name: "Prasad Hospitals", scheduled_date: "2026-04-06", scheduled_time: "14:00", purpose: "Hospital procurement meeting", priority: "high", status: "pending", estimated_duration: 60, notes: "Discuss volume pricing" },
+    { id: 23, mr_id: 1, pharmacy_name: "Ankur Medicals", scheduled_date: "2026-04-06", scheduled_time: "14:30", purpose: "Restock check & new product intro", priority: "medium", status: "pending", estimated_duration: 25, notes: "New antibiotic range samples" }
   ],
 
   pharmacies: [
@@ -656,7 +663,8 @@ const data = {
   ],
   visit_records: [],
   missed_visits: [],
-  daily_summaries: []
+  daily_summaries: [],
+  daily_call_plans: []
 };
 
 let nextId = {
@@ -667,7 +675,7 @@ let nextId = {
   expenses: 5,
   sales: 7,
   doctor_visits: 7,
-  visit_schedules: 6,
+  visit_schedules: 37,
   pharmacies: 63,
   hospitals: 16,
   pharmacy_visits: 1,
@@ -677,12 +685,13 @@ let nextId = {
   visit_reviews: 1,
   notifications: 10,
   leads: 3,
-  attendance: 3,
+  attendance: 10,
   activities: 5,
-  visit_recordings: 3,
+  visit_recordings: 10,
   approval_requests: 3,
   entity_credits: 3,
-  mr_locations: 4
+  mr_locations: 4,
+  daily_call_plans: 1
 };
 
 async function startServer() {
@@ -742,8 +751,23 @@ async function startServer() {
   });
   app.get("/api/products", (req, res) => res.json(data.products));
   app.get("/api/doctors", (req, res) => res.json(data.doctors));
+  app.post("/api/doctors", (req, res) => {
+    const newDoctor = { id: Date.now(), ...req.body };
+    data.doctors.push(newDoctor);
+    res.status(201).json(newDoctor);
+  });
   app.get("/api/pharmacies", (req, res) => res.json(data.pharmacies));
+  app.post("/api/pharmacies", (req, res) => {
+    const newPharmacy = { id: Date.now(), ...req.body };
+    data.pharmacies.push(newPharmacy);
+    res.status(201).json(newPharmacy);
+  });
   app.get("/api/hospitals", (req, res) => res.json(data.hospitals));
+  app.post("/api/hospitals", (req, res) => {
+    const newHospital = { id: Date.now(), ...req.body };
+    data.hospitals.push(newHospital);
+    res.status(201).json(newHospital);
+  });
   app.get("/api/targets", (req, res) => res.json(data.targets));
   app.get("/api/expenses", (req, res) => res.json(data.expenses));
   app.get("/api/sales", (req, res) => res.json(data.sales));
@@ -759,6 +783,188 @@ async function startServer() {
       res.json(data.attendance);
     }
   });
+
+  app.post("/api/attendance/check-in", (req, res) => {
+    const { mr_id, mr_name, lat, lng } = req.body;
+    const existing = data.attendance.find(a => a.mr_id === mr_id && a.date === new Date().toISOString().split('T')[0]);
+    if (existing) {
+      res.json({ success: true, alreadyCheckedIn: true, checkIn: existing.check_in });
+      return;
+    }
+    const record = {
+      id: Date.now(),
+      mr_id,
+      date: new Date().toISOString().split('T')[0],
+      check_in: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true }),
+      lat, lng,
+      status: 'present' as const,
+      visit_counts: { doctor: 0, clinic: 0, hospital: 0, chemist: 0 },
+      total_order_value: 0,
+    };
+    data.attendance.push(record);
+    res.status(201).json({ success: true, record });
+  });
+
+  app.post("/api/attendance/check-out", (req, res) => {
+    const { mr_id } = req.body;
+    const today = new Date().toISOString().split('T')[0];
+    const record = data.attendance.find(a => a.mr_id === mr_id && a.date === today);
+    if (record) {
+      (record as any).check_out = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+    }
+    res.json({ success: true, checkOut: (record as any)?.check_out });
+  });
+
+  // Start Visit - transition schedule from pending to in_progress
+  app.patch("/api/visit-schedules/:id/start", (req, res) => {
+    const schedule = data.visit_schedules.find(s => s.id === parseInt(req.params.id));
+    if (schedule) {
+      schedule.status = 'in_progress';
+      schedule.actual_start = new Date().toISOString();
+      res.json({ success: true, schedule });
+    } else {
+      res.status(404).json({ error: 'Schedule not found' });
+    }
+  });
+
+  // Complete Visit - transition schedule to completed
+  app.patch("/api/visit-schedules/:id/complete", (req, res) => {
+    const schedule = data.visit_schedules.find(s => s.id === parseInt(req.params.id));
+    if (schedule) {
+      schedule.status = 'completed';
+      schedule.actual_end = new Date().toISOString();
+      if (req.body.notes) schedule.notes = req.body.notes;
+      res.json({ success: true, schedule });
+    } else {
+      res.status(404).json({ error: 'Schedule not found' });
+    }
+  });
+
+  // === Daily Call Plan ===
+  // Compute the call plan for a given MR + date from schedules + entity data + past visits
+  app.get("/api/daily-call-plan", (req, res) => {
+    const mrId = req.query.mr_id ? parseInt(req.query.mr_id as string) : null;
+    const date = (req.query.date as string) || new Date().toISOString().split('T')[0];
+
+    const schedules = data.visit_schedules.filter(
+      s => s.scheduled_date === date && (!mrId || s.mr_id === mrId)
+    );
+
+    const plan = schedules.map(s => {
+      // Find entity details
+      let entity = data.doctors.find(d => d.id === s.doctor_id) ||
+        { name: s.doctor_name, clinic: s.clinic, tier: 'B', territory: '', phone: '' } as any;
+      if (!entity.id) {
+        // Try chemist or hospital by name
+        entity = data.pharmacies.find(p => p.name === s.doctor_name) ||
+          data.hospitals.find(h => h.name === s.doctor_name) || entity;
+      }
+
+      // Last visit to this entity
+      const pastVisits = data.visit_records.filter(v =>
+        v.mr_id === s.mr_id && v.entity_name === entity.name && v.status === 'completed'
+      ).sort((a, b) => {
+        const da = a.created_at || a.check_in_timestamp || '';
+        const db = b.created_at || b.check_in_timestamp || '';
+        return db.localeCompare(da);
+      });
+      const lastVisit = pastVisits[0];
+      const daysSince = lastVisit
+        ? Math.floor((Date.now() - new Date(lastVisit.check_in_timestamp || lastVisit.created_at).getTime()) / 86400000)
+        : 999;
+
+      let entityType: 'doctor' | 'chemist' | 'hospital' = 'doctor';
+      if (data.pharmacies.find(p => p.name === entity.name)) entityType = 'chemist';
+      else if (data.hospitals.find(h => h.name === entity.name)) entityType = 'hospital';
+
+      return {
+        id: s.id,
+        mr_id: s.mr_id,
+        schedule_id: s.id,
+        doctor_id: s.doctor_id || entity.id,
+        entity_type: entityType,
+        entity_name: entity.name || s.doctor_name,
+        clinic: entity.clinic || s.clinic || '',
+        tier: entity.tier || 'B',
+        area: entity.territory || entity.area || '',
+        phone: entity.phone || '',
+        planned_time: s.scheduled_time || '09:00',
+        purpose: s.purpose || 'routine',
+        priority: s.priority || 'medium',
+        status: s.status === 'completed' ? 'completed' : s.status === 'in_progress' ? 'in_progress' : 'planned',
+        days_since_last_visit: daysSince,
+        last_visit_date: lastVisit?.created_at?.split('T')[0] || '',
+        visit_outcome: null,
+        notes: s.notes || '',
+      };
+    });
+
+    res.json(plan);
+  });
+
+  // Complete a call plan entry with visit outcome
+  app.post("/api/daily-call-plan/:id/complete", (req, res) => {
+    const id = parseInt(req.params.id);
+    const { mr_id, doctor_name, scheduled_date } = req.body;
+
+    // Prefer exact ID match first (no collision case)
+    const byId = data.visit_schedules.filter(s => s.id === id);
+    let schedule = null;
+    if (byId.length === 1) {
+      schedule = byId[0];
+    } else if (byId.length > 1 && mr_id && scheduled_date) {
+      // Disambiguate by mr_id + scheduled_date
+      schedule = byId.find(s => s.mr_id === mr_id && s.scheduled_date === scheduled_date) || byId[0];
+    } else if (byId.length > 1 && mr_id && doctor_name) {
+      // Fallback disambiguation by mr_id + doctor_name
+      schedule = byId.find(s => s.mr_id === mr_id && s.doctor_name === doctor_name) || byId[0];
+    } else {
+      schedule = byId[0] || null;
+    }
+
+    if (!schedule) {
+      res.status(404).json({ error: 'Schedule not found' });
+      return;
+    }
+    schedule.status = 'completed';
+    schedule.actual_end = new Date().toISOString();
+    schedule.notes = schedule.notes + (schedule.notes ? '; ' : '') + (req.body.outcome?.conversation_summary || '');
+
+    // Push into visit_records for analytics
+    const visitRecord = {
+      id: nextId.visit_records++,
+      mr_id: schedule.mr_id,
+      entity_name: schedule.doctor_name,
+      entity_type: 'doctor',
+      check_in_timestamp: req.body.outcome?.check_in_time || new Date().toISOString(),
+      check_out_timestamp: req.body.outcome?.check_out_time || new Date().toISOString(),
+      speaking_time: req.body.outcome?.speaking_time || 0,
+      products_detailed: req.body.outcome?.products_detailed || '',
+      doctor_feedback: req.body.outcome?.doctor_feedback || '',
+      samples_given: req.body.outcome?.samples_given || '',
+      order_value: req.body.outcome?.order_value || 0,
+      order_product: req.body.outcome?.order_product || '',
+      next_followup: req.body.outcome?.next_followup || null,
+      conversation_summary: req.body.outcome?.conversation_summary || '',
+      status: 'completed',
+      created_at: new Date().toISOString(),
+    };
+    data.visit_records.push(visitRecord);
+
+    res.json({ success: true, schedule });
+  });
+
+  // Create ad-hoc call plan entry
+  app.post("/api/daily-call-plan", (req, res) => {
+    const newPlan = {
+      id: nextId.visit_schedules++,
+      ...req.body,
+      status: 'pending',
+    };
+    data.visit_schedules.push(newPlan);
+    res.status(201).json(newPlan);
+  });
+
   app.get("/api/activities", (req, res) => {
     const mrId = req.query.mr_id ? parseInt(req.query.mr_id as string) : null;
     const date = req.query.date as string;
@@ -2002,6 +2208,22 @@ async function startServer() {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
+
+  // Deduplicate visit_schedules IDs on startup
+  const seen = new Set<number>();
+  let maxId = Math.max(0, ...data.visit_schedules.map((s: any) => s.id));
+  let renumberedCount = 0;
+  data.visit_schedules.forEach((s: any) => {
+    if (seen.has(s.id)) {
+      maxId++;
+      s.id = maxId;
+      renumberedCount++;
+    } else {
+      seen.add(s.id);
+    }
+  });
+  nextId.visit_schedules = maxId + 1;
+  console.log(`Startup: visit_schedules deduped (${renumberedCount} renumbered), ${data.visit_schedules.length} entries, nextId=${nextId.visit_schedules}`);
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);

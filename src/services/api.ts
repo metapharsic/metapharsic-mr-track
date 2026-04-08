@@ -185,4 +185,26 @@ export const api = {
       return fetch(url).then(res => res.json() as Promise<any>);
     },
   },
+  dailyCallPlan: {
+    getAll: (mrId?: number, date?: string) => {
+      let url = `${API_BASE}/daily-call-plan`;
+      const params = new URLSearchParams();
+      if (mrId) params.append('mr_id', mrId.toString());
+      if (date) params.append('date', date);
+      if (params.toString()) url += `?${params.toString()}`;
+      return fetch(url).then(res => res.json() as Promise<any[]>);
+    },
+    complete: (id: number, outcome: any) =>
+      fetch(`${API_BASE}/daily-call-plan/${id}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(outcome),
+      }).then(res => res.json()),
+    create: (plan: any) =>
+      fetch(`${API_BASE}/daily-call-plan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(plan),
+      }).then(res => res.json()),
+  },
 };

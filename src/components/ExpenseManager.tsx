@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import { Expense, MR } from '../types';
+import { useAuth } from '../contexts/AuthContext';
 import {
   Search, Filter, Plus, Receipt,
   DollarSign, Calendar, User, Brain,
@@ -14,7 +15,7 @@ import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  Pie, Cell, LineChart, Line, AreaChart, Area
+  Pie, Cell, AreaChart, Area
 } from 'recharts';
 
 const COLORS = ['#2563eb', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#ec4899', '#06b6d4', '#f97316'];
@@ -115,6 +116,7 @@ function generateExpenseInsights(
 }
 
 export default function ExpenseManager() {
+  const { user } = useAuth();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [mrs, setMrs] = useState<MR[]>([]);
   const [loading, setLoading] = useState(true);
@@ -131,16 +133,26 @@ export default function ExpenseManager() {
     category: '',
     amount: '',
     date: new Date().toISOString().split('T')[0],
-    mr_id: 1,
+    mr_id: 0,
     status: 'pending'
   });
+
+  useEffect(() => {
+    if (user?.role === 'mr' && user.mr_id) {
+      setFormData(prev => ({ ...prev, mr_id: user.mr_id! }));
+    }
+  }, [user]);
 
   useEffect(() => {
     Promise.all([
       api.expenses.getAll(),
       api.mrs.getAll()
     ]).then(([e, m]) => {
-      setExpenses(e || []);
+      let filtered = e || [];
+      if (user?.role === 'mr') {
+        filtered = filtered.filter((exp: Expense) => exp.mr_id === user.mr_id);
+      }
+      setExpenses(filtered);
       setMrs(m || []);
       setLoading(false);
     }).catch(() => setLoading(false));
@@ -601,6 +613,7 @@ export default function ExpenseManager() {
                 />
               </div>
 
+              {user?.role !== 'mr' && (
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">MR *</label>
                 <select
@@ -616,6 +629,7 @@ export default function ExpenseManager() {
                   ))}
                 </select>
               </div>
+              )}
 
               <div className="flex gap-3 pt-4">
                 <button
