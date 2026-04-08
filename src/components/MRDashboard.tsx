@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
+import MorningBriefingModal, { DailyBriefing, BriefingItem } from './MorningBriefingModal';
 
 const today = new Date().toISOString().split('T')[0];
 
@@ -40,6 +41,11 @@ export default function MRDashboard() {
 
   // Expanded recent visit
   const [expandedVisit, setExpandedVisit] = useState<number | null>(null);
+
+  // Morning briefing state
+  const [briefing, setBriefing] = useState<DailyBriefing | null>(null);
+  const [showBriefingModal, setShowBriefingModal] = useState(false);
+  const [briefingLoaded, setBriefingLoaded] = useState(false);
 
   // Determine effective MR ID based on role
   const effectiveMrId = selectedMrId ?? (user?.role === 'mr' ? (user.mr_id ?? null) : null);

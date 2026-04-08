@@ -6,6 +6,7 @@ export interface User {
   email: string;
   role: UserRole;
   mr_id?: number;
+  territory?: string;
   avatar_url?: string;
   permissions: string[];
   last_login?: string;
@@ -70,6 +71,8 @@ export interface Doctor {
   notes?: string;
   hospital_id?: number;
   entity_type?: string;
+  lat?: number;  // For route optimization
+  lng?: number;
 }
 
 export interface Pharmacy {

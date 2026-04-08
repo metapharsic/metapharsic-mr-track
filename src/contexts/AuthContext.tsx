@@ -114,6 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email: 'rajesh.kumar@metapharsic.com',
       role: 'mr',
       mr_id: 1,
+      territory: 'Hyderabad West (Kukatpally, Gachibowli, Miyapur)',
       avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop',
       permissions: ROLE_PERMISSIONS.mr,
       created_at: new Date().toISOString()
@@ -124,6 +125,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email: 'suresh.raina@metapharsic.com',
       role: 'mr',
       mr_id: 2,
+      territory: 'Hyderabad Central (Banjara Hills, Jubilee Hills, Barkatpura)',
       avatar_url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&h=400&fit=crop',
       permissions: ROLE_PERMISSIONS.mr,
       created_at: new Date().toISOString()
@@ -134,6 +136,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       email: 'priya.sharma@metapharsic.com',
       role: 'mr',
       mr_id: 3,
+      territory: 'Hyderabad East (Secunderabad, Tarnaka, Uppal)',
       avatar_url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&h=400&fit=crop',
       permissions: ROLE_PERMISSIONS.mr,
       created_at: new Date().toISOString()

@@ -13,6 +13,7 @@ import {
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import AIVisitInspector from './AIVisitInspector';
+import { useAuth } from '../contexts/AuthContext';
 
 type EntityType = 'all' | 'doctor' | 'pharmacy' | 'hospital';
 
@@ -48,9 +49,30 @@ export default function HealthcareDirectory() {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const { user } = useAuth();
+
+  // Auto-set territory for MR users
+  useEffect(() => {
+    if (user?.role === 'mr' && user.territory) {
+      setSelectedTerritory(user.territory);
+    } else if (!user) {
+      // Reset when logged out
+      setSelectedTerritory('all');
+    }
+  }, [user]);
+
   const resetAddForm = () => { setFormData({}); setFormErrors({}); setIsSubmitting(false); };
 
-  const openAddFor = (et: 'doctor' | 'pharmacy' | 'hospital') => { setAddType(et); resetAddForm(); setShowAddModal(true); if (type === 'all') setType(et); };
+  const openAddFor = (et: 'doctor' | 'pharmacy' | 'hospital') => {
+    setAddType(et);
+    resetAddForm();
+    // For MR users, auto-set territory to their assigned territory
+    if (user?.role === 'mr' && user.territory) {
+      setFormData(prev => ({ ...prev, territory: user.territory }));
+    }
+    setShowAddModal(true);
+    if (type === 'all') setType(et);
+  };
 
   const handleFormChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -79,20 +101,20 @@ export default function HealthcareDirectory() {
     setIsSubmitting(true);
     try {
       const base = { name: formData.name.trim(), phone: formData.phone || '+91 00000 00000', email: formData.email || '', address: formData.address.trim(), territory: formData.territory || '', tier: formData.tier || 'B', status: 'active' as const, area: formData.territory || '' };
-      let ep: string, payload: any;
+      let created: any;
       if (addType === 'doctor') {
-        ep = 'doctors'; payload = { ...base, clinic: formData.clinic?.trim() || '', specialty: formData.specialty?.trim() || '', potential: formData.potential || 'medium', total_visits: 0, total_orders: 0, total_value: 0, rating: 0, timings: formData.timings || '9AM-5PM', qualification: formData.qualification || '', dept_opd: formData.dept_opd || '', mr_visit_window: formData.mr_visit_window || '', notes: formData.notes || '' };
+        const payload = { ...base, clinic: formData.clinic?.trim() || '', specialty: formData.specialty?.trim() || '', potential: formData.potential || 'medium', total_visits: 0, total_orders: 0, total_value: 0, rating: 0, timings: formData.timings || '9AM-5PM', qualification: formData.qualification || '', dept_opd: formData.dept_opd || '', mr_visit_window: formData.mr_visit_window || '', notes: formData.notes || '' };
+        created = await api.doctors.create(payload);
+        setDoctors(p => [...p, created as Doctor]);
       } else if (addType === 'pharmacy') {
-        ep = 'pharmacies'; payload = { ...base, owner_name: formData.owner_name?.trim() || '', credit_limit: Number(formData.credit_limit) || 0, credit_days: Number(formData.credit_days) || 30, total_purchases: 0, total_value: 0, rating: 0, notes: formData.notes || '', shop_hours: formData.shop_hours || '9AM-9PM', mr_visit_window: formData.mr_visit_window || '', type: formData.type || '', discount_notes: formData.discount_notes || '' };
+        const payload = { ...base, owner_name: formData.owner_name?.trim() || '', credit_limit: Number(formData.credit_limit) || 0, credit_days: Number(formData.credit_days) || 30, total_purchases: 0, total_value: 0, rating: 0, notes: formData.notes || '', shop_hours: formData.shop_hours || '9AM-9PM', mr_visit_window: formData.mr_visit_window || '', type: formData.type || '', discount_notes: formData.discount_notes || '' };
+        created = await api.pharmacies.create(payload);
+        setPharmacies(p => [...p, created as Pharmacy]);
       } else {
-        ep = 'hospitals'; payload = { ...base, type: formData.type?.trim() || '', contact_person: formData.contact_person?.trim() || '', bed_count: Number(formData.bed_count) || 0, credit_limit: Number(formData.credit_limit) || 0, credit_days: Number(formData.credit_days) || 45, total_purchases: 0, total_value: 0, rating: 0, notes: formData.notes || '' };
+        const payload = { ...base, type: formData.type?.trim() || '', contact_person: formData.contact_person?.trim() || '', bed_count: Number(formData.bed_count) || 0, credit_limit: Number(formData.credit_limit) || 0, credit_days: Number(formData.credit_days) || 45, total_purchases: 0, total_value: 0, rating: 0, notes: formData.notes || '' };
+        created = await api.hospitals.create(payload);
+        setHospitals(p => [...p, created as Hospital]);
       }
-      const res = await fetch(`/api/${ep}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      if (!res.ok) throw new Error('Failed');
-      const created = await res.json();
-      if (addType === 'doctor') setDoctors(p => [...p, created as Doctor]);
-      else if (addType === 'pharmacy') setPharmacies(p => [...p, created as Pharmacy]);
-      else setHospitals(p => [...p, created as Hospital]);
       setToastMessage(`✓ ${addType.charAt(0).toUpperCase() + addType.slice(1)} "${created.name}" added!`);
       setShowToast(true);
       setTimeout(() => setShowToast(false), 4000);
@@ -112,17 +134,26 @@ export default function HealthcareDirectory() {
     const isTextarea = opts.type === 'textarea';
     const req = opts.required !== false;
     const sel = (vals: string[]) => vals.map(v => <option key={v} value={v}>{v}</option>);
+    // MRs cannot edit territory - it's locked to their assigned territory
+    const isTerritoryLocked = user?.role === 'mr' && field === 'territory';
     return (
       <div>
         {isSelect ? (
           <div>
-            <select value={formData[field] || ''} onChange={e => handleFormChange(field, e.target.value)}
-              className={`w-full px-4 py-2.5 border rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 ${formErrors[field] ? 'border-red-300 bg-red-50' : 'border-slate-200'}`}>
+            <select
+              value={formData[field] || ''}
+              onChange={e => handleFormChange(field, e.target.value)}
+              disabled={isTerritoryLocked}
+              className={`w-full px-4 py-2.5 border rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 ${formErrors[field] ? 'border-red-300 bg-red-50' : 'border-slate-200'} ${isTerritoryLocked ? 'bg-blue-50 cursor-not-allowed' : ''}`}
+            >
               <option value="">{label}</option>
               {field === 'territory' && sel(terrs)}
               {field === 'tier' && sel(['A', 'B', 'C'])}
               {field === 'potential' && sel(['high', 'medium', 'low'])}
             </select>
+            {isTerritoryLocked && (
+              <p className="text-xs text-blue-600 mt-1">Your territory is automatically assigned</p>
+            )}
             {formErrors[field] && <p className="text-red-500 text-xs mt-1">{formErrors[field]}</p>}
           </div>
         ) : (
@@ -650,9 +681,9 @@ export default function HealthcareDirectory() {
           />
         </div>
         
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap items-center">
           {selectedHospitalId && (
-            <button 
+            <button
               onClick={() => {
                 setSelectedHospitalId(null);
                 setType('all');
@@ -662,18 +693,27 @@ export default function HealthcareDirectory() {
               Clear Hospital Filter
             </button>
           )}
-          <select 
-            value={selectedTerritory}
-            onChange={(e) => setSelectedTerritory(e.target.value)}
-            className="px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-600 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none min-w-[160px] cursor-pointer hover:border-slate-300 transition-colors"
-          >
-            <option value="all">All Territories</option>
-            {territories.map(t => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
 
-          <select 
+          {/* Territory Filter - Admin/Manager only. MRs see their territory as a banner */}
+          {user?.role === 'mr' && user.territory ? (
+            <div className="px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-800 font-medium flex items-center gap-2">
+              <MapPin size={16} />
+              <span>{user.territory}</span>
+            </div>
+          ) : (
+            <select
+              value={selectedTerritory}
+              onChange={(e) => setSelectedTerritory(e.target.value)}
+              className="px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-600 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none min-w-[160px] cursor-pointer hover:border-slate-300 transition-colors"
+            >
+              <option value="all">All Territories</option>
+              {territories.map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          )}
+
+          <select
             value={selectedTier}
             onChange={(e) => setSelectedTier(e.target.value)}
             className="px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-600 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none min-w-[120px] cursor-pointer hover:border-slate-300 transition-colors"

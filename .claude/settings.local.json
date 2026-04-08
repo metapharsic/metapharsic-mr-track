@@ -72,7 +72,12 @@
       "Bash(findstr node:*)",
       "Bash(ls:*)",
       "Bash(git push:*)",
-      "Bash(pkill -f \"node.*server.ts\")"
+      "Bash(pkill -f \"node.*server.ts\")",
+      "Bash(grep -E '\\\\.md$')",
+      "Bash(git status:*)",
+      "Bash(git update-index:*)",
+      "Bash(git show:*)",
+      "Bash(git diff:*)"
     ]
   }
 }
