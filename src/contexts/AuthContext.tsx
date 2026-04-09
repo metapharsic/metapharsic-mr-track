@@ -40,7 +40,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
     'expenses.view', 'expenses.create',
     'schedule.view', 'schedule.create', 'schedule.edit',
     'leads.view', 'leads.create',
-    'mr-dashboard.view'
+    'mr-dashboard.view',
+    'field-capture.view'
   ],
   viewer: [
     'dashboard.view',
@@ -96,7 +97,9 @@ const ROUTE_PERMISSIONS: Record<string, string> = {
   '/schedule': 'schedule.view',
   '/leads': 'leads.view',
   '/mr-dashboard': 'mr-dashboard.view',
+  '/field-tracker': 'field-capture.view',
   '/performance': 'performance.view',
+  '/mr-tracking': 'data.view',
   '/data-management': 'data.view',
   '/settings': 'settings.view'
 };

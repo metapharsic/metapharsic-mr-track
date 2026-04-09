@@ -15,7 +15,7 @@ export interface Notification {
 interface NotificationContextType {
   notifications: Notification[];
   unreadCount: number;
-  addNotification: (notification: Omit<Notification, 'id' | 'timestamp' | 'read'>) => void;
+  addNotification: (notificationOrMessage: Omit<Notification, 'id' | 'timestamp' | 'read'> | string, typeOrLink?: NotificationType | string, type?: NotificationType) => void;
   markAsRead: (id: string) => void;
   markAllAsRead: () => void;
   deleteNotification: (id: string) => void;
@@ -45,7 +45,19 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
-  const addNotification = useCallback((notification: Omit<Notification, 'id' | 'timestamp' | 'read'>) => {
+  const addNotification = useCallback((notificationOrMessage: Omit<Notification, 'id' | 'timestamp' | 'read'> | string, typeOrLink?: NotificationType | string, type?: NotificationType) => {
+    let notification: Omit<Notification, 'id' | 'timestamp' | 'read'>;
+    
+    if (typeof notificationOrMessage === 'string') {
+      notification = {
+        title: typeOrLink === 'error' ? 'Error' : typeOrLink === 'success' ? 'Success' : 'Notification',
+        message: notificationOrMessage,
+        type: (type || typeOrLink || 'info') as NotificationType,
+      };
+    } else {
+      notification = notificationOrMessage;
+    }
+
     const newNotification: Notification = {
       ...notification,
       id: Date.now().toString() + Math.random().toString(36).substr(2, 9),

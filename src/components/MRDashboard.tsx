@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import { MR, Visit } from '../types';
 import { useAuth } from '../contexts/AuthContext';
@@ -22,6 +23,7 @@ const today = new Date().toISOString().split('T')[0];
 export default function MRDashboard() {
   const { user } = useAuth();
   const { addNotification } = useNotifications();
+  const navigate = useNavigate();
 
   const [mrs, setMrs] = useState<MR[]>([]);
   const [selectedMrId, setSelectedMrId] = useState<number | null>(null);
@@ -92,6 +94,52 @@ export default function MRDashboard() {
     }).catch(() => setLoading(false));
   }, [effectiveMrId]);
 
+  // Load morning briefing for the selected MR from /api/daily-briefing
+  useEffect(() => {
+    if (!effectiveMrId) {
+      setBriefing(null);
+      setBriefingLoaded(true);
+      return;
+    }
+
+    setBriefingLoaded(false);
+    api.dailyBriefing.get(effectiveMrId, today)
+      .then((briefingData: any) => {
+        if (briefingData && !briefingData.error) {
+          const b: DailyBriefing = {
+            date: briefingData.date || today,
+            mr_id: briefingData.mr_id || effectiveMrId,
+            schedule: briefingData.schedule || [],
+            total_expected_value: briefingData.total_expected_value || 0,
+            total_travel_km: briefingData.total_travel_km || 0,
+            optimized_route_percentage: briefingData.optimized_route_percentage || 0,
+            generated_at: briefingData.generated_at || new Date().toISOString(),
+            message: briefingData.message
+          };
+          setBriefing(b);
+
+          // Auto-show briefing once per session (first login of the day)
+          const seenKey = `briefing_seen_${effectiveMrId}_${today}`;
+          if (!sessionStorage.getItem(seenKey) && b.schedule.length > 0) {
+            sessionStorage.setItem(seenKey, '1');
+            setShowBriefingModal(true);
+            // Also push a notification
+            addNotification(
+              `🌅 AI Morning Briefing ready — ${b.schedule.length} visits optimized, expected ₹${b.total_expected_value.toLocaleString('en-IN')}`,
+              'info'
+            );
+          }
+        } else {
+          setBriefing(null);
+        }
+        setBriefingLoaded(true);
+      })
+      .catch(() => {
+        setBriefing(null);
+        setBriefingLoaded(true);
+      });
+  }, [effectiveMrId]);
+
   const selectedMr = mrs.find(m => m.id === selectedMrId);
 
   // --- Handlers ---
@@ -121,7 +169,7 @@ export default function MRDashboard() {
         minute: '2-digit',
       });
       setAttendance(result ?? { check_in: checkInTime });
-      addNotification('Checked in successfully at ' + checkInTime, 'success');
+      addNotification({ message: 'Checked in successfully at ' + checkInTime, type: 'success', title: 'Attendance' });
     } catch (err) {
       console.error('Check-in failed:', err);
       // Fallback: record locally
@@ -152,17 +200,12 @@ export default function MRDashboard() {
       prev.map(s => s.id === schedule.id ? { ...s, status: 'in_progress' } : s)
     );
     setStartedVisits(prev => new Set(prev).add(schedule.id));
-    setStartingVisit(null);
-
-    // Navigate to field-tracker with schedule info
-    window.location.hash = `/field-tracker?schedule_id=${schedule.id}&doctor_name=${encodeURIComponent(schedule.doctor_name)}&clinic=${encodeURIComponent(schedule.clinic)}&purpose=${encodeURIComponent(schedule.purpose ?? '')}`;
-  }, []);
+    // Navigate to field tracker
+    navigate(`/field-tracker?schedule_id=${schedule.id}`);
+  }, [navigate]);
 
   const handleCall = useCallback((schedule: any) => {
-    addNotification(
-      `Contact info — ${schedule.doctor_name} at ${schedule.clinic}`,
-      'info'
-    );
+    addNotification({ message: `Contact info — ${schedule.doctor_name} at ${schedule.clinic}`, type: 'info', title: 'Contact' });
   }, [addNotification]);
 
   const handleViewVisit = useCallback((visitId: number) => {
@@ -223,6 +266,22 @@ export default function MRDashboard() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* AI Briefing Button - shown whenever briefing is loaded */}
+          {briefingLoaded && briefing && (
+            <button
+              onClick={() => setShowBriefingModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-xl font-bold shadow-lg hover:shadow-blue-500/30 hover:scale-105 transition-all text-sm"
+            >
+              <Zap className="w-4 h-4 text-yellow-300" fill="currentColor" />
+              AI Briefing
+              {briefing.schedule.length > 0 && (
+                <span className="bg-white/20 text-white text-xs px-1.5 py-0.5 rounded-full">
+                  {briefing.schedule.length}
+                </span>
+              )}
+            </button>
+          )}
+
           {/* MR selector — shown for admin/manager; disabled for MR role */}
           {user && user.role !== 'mr' && (
             <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2">
@@ -376,7 +435,9 @@ export default function MRDashboard() {
             viewMode === 'grid' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' : 'grid-cols-1'
           )}>
             <AnimatePresence mode="popLayout">
-              {schedules.map((schedule, index) => {
+              {schedules
+                .filter(s => s.status === 'pending' && !startedVisits.has(s.id))
+                .map((schedule, index) => {
                 const isStarted = startedVisits.has(schedule.id);
                 const isCompleted = schedule.status === 'completed';
                 const isExpanded = expandedCard === schedule.id;
@@ -721,6 +782,19 @@ export default function MRDashboard() {
           </div>
         )}
       </div>
+
+      {/* Morning Briefing Modal */}
+      <MorningBriefingModal
+        briefing={briefing}
+        isOpen={showBriefingModal}
+        onClose={() => setShowBriefingModal(false)}
+        onStartNavigation={(item) => {
+          setShowBriefingModal(false);
+          // Open Google Maps with the clinic location
+          const query = encodeURIComponent(`${item.clinic}, ${item.territory}`);
+          window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, '_blank');
+        }}
+      />
     </div>
   );
 }

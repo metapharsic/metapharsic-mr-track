@@ -181,7 +181,7 @@ function AppContent() {
               <Route path="/settings" element={<ProtectedRoute requiredPermission="settings.view"><Settings /></ProtectedRoute>} />
               <Route path="/users" element={<ProtectedRoute requiredPermission="users.view"><UserManagement /></ProtectedRoute>} />
               <Route path="/mr-tracking" element={<ProtectedRoute requiredPermission="data.view"><MRTracking /></ProtectedRoute>} />
-              <Route path="/field-tracker" element={<ProtectedRoute requiredPermission="data.view"><MRFieldTracker /></ProtectedRoute>} />
+              <Route path="/field-tracker" element={<ProtectedRoute requiredPermission="field-capture.view"><MRFieldTracker /></ProtectedRoute>} />
               <Route path="/approvals" element={<ProtectedRoute requiredPermission="expenses.approve"><ApprovalWorkflow /></ProtectedRoute>} />
               <Route path="/entity-credits" element={<ProtectedRoute requiredPermission="data.view"><EntityCredits /></ProtectedRoute>} />
               <Route path="/unauthorized" element={<Navigate to="/" replace />} />

@@ -84,13 +84,13 @@ const navItems = [
   { icon: Receipt, label: 'Expense Manager', path: '/expenses', permission: 'expenses.view' },
   { icon: Calendar, label: 'Daily Call Plan', path: '/schedule', permission: 'schedule.view' },
   { icon: UserPlus, label: 'Leads Management', path: '/leads', permission: 'leads.view' },
-  { icon: LayoutGrid, label: 'MR Dashboard', path: '/mr-dashboard', permission: 'mr-dashboard.view' },
+  { icon: LayoutGrid, label: 'MR Dashboard', path: '/mr-dashboard', permission: 'mr-dashboard.view', roles: ['mr'] },
+  { icon: MapPin, label: 'Field Visit Capture', path: '/field-tracker', permission: 'field-capture.view', roles: ['mr'] },
   { icon: BarChart3, label: 'Performance', path: '/performance', permission: 'performance.view' },
-  { icon: MapPin, label: 'MR Tracking', path: '/mr-tracking', permission: 'data.view' },
-  { icon: MapPin, label: 'Field Tracker', path: '/field-tracker', permission: 'data.view' },
+  { icon: MapPin, label: 'Admin Field Monitor', path: '/mr-tracking', permission: 'data.view', roles: ['admin', 'manager'] },
   { icon: FileCheck, label: 'Approvals', path: '/approvals', permission: 'expenses.approve' },
-  { icon: CreditCard, label: 'Entity Credits', path: '/entity-credits', permission: 'data.view' },
-  { icon: FileText, label: 'Data Management', path: '/data-management', permission: 'data.view' },
+  { icon: CreditCard, label: 'Entity Credits', path: '/entity-credits', permission: 'data.view', roles: ['admin', 'manager'] },
+  { icon: FileText, label: 'Data Management', path: '/data-management', permission: 'data.view', roles: ['admin', 'manager'] },
 ];
 
 interface SidebarProps {
@@ -161,7 +161,12 @@ export default function Sidebar({ onOpenSearch }: SidebarProps) {
       
       <nav className="flex-1 py-4 px-4 space-y-1 overflow-y-auto">
         {navItems
-          .filter(item => hasPermission(item.permission))
+          .filter(item => {
+            // Role restriction: if item has roles array, user must be in that list
+            if (item.roles && user?.role && !item.roles.includes(user.role)) return false;
+            // Permission check (admin bypasses this, but role check above handles them)
+            return hasPermission(item.permission);
+          })
           .map((item) => (
             <NavLink
               key={item.path}

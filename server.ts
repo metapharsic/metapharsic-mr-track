@@ -392,31 +392,41 @@ const data = {
     }
   ],
   
-  visit_schedules: [
-    { id: 1, mr_id: 1, doctor_id: 5, doctor_name: "Dr. Vikram Singh", clinic: "Singh Ortho & Spine Care", scheduled_date: "2026-02-28", scheduled_time: "11:00", purpose: "Ortho product presentation - Bone health range", priority: "high", status: "completed", estimated_duration: 45, notes: "Prepare samples for OrthoFlex and Calcium supplements" },
-    { id: 2, mr_id: 1, doctor_id: 10, doctor_name: "Dr. V. Prasad", clinic: "Whitus Hospitals", scheduled_date: "2026-03-05", scheduled_time: "10:00", purpose: "Product briefing", priority: "medium", status: "completed", estimated_duration: 30, notes: "Discussed new cardiac range" },
-    { id: 3, mr_id: 2, doctor_id: 20, doctor_name: "Dr. K. S. Rao", clinic: "Care Hospitals", scheduled_date: "2026-03-08", scheduled_time: "14:00", purpose: "Quarterly review", priority: "medium", status: "completed", estimated_duration: 30, notes: "Good response to product lineup" },
-    { id: 4, mr_id: 1, doctor_id: 25, doctor_name: "Dr. Ramesh", clinic: "Shiva Hospital", scheduled_date: "2026-03-10", scheduled_time: "11:00", purpose: "New product launch", priority: "high", status: "completed", estimated_duration: 45, notes: "Approved for bulk purchase" },
-    { id: 5, mr_id: 2, doctor_id: 30, doctor_name: "Dr. Sreenivas", clinic: "Sree Satya Laparoscopy", scheduled_date: "2026-03-12", scheduled_time: "15:00", purpose: "Follow-up visit", priority: "medium", status: "completed", estimated_duration: 30, notes: "Placed order for surgical supplies" },
-    { id: 6, mr_id: 3, doctor_id: 35, doctor_name: "Dr. Anitha", clinic: "Anitha Maternity Home", scheduled_date: "2026-03-15", scheduled_time: "10:30", purpose: "Maternity products demo", priority: "high", status: "completed", estimated_duration: 40, notes: "Very interested in new range" },
-    { id: 7, mr_id: 1, pharmacy_id: 12, pharmacy_name: "Ankur Medicals", scheduled_date: "2026-03-18", scheduled_time: "11:00", purpose: "Pharmacy stock replenishment", priority: "medium", status: "completed", estimated_duration: 25, notes: "Ordered priority medicines" },
-    { id: 8, mr_id: 2, pharmacy_id: 18, pharmacy_name: "MedPlus Nacharam", scheduled_date: "2026-03-20", scheduled_time: "14:00", purpose: "Chain store visit", priority: "high", status: "completed", estimated_duration: 35, notes: "Chain coordinator meeting scheduled" },
-    { id: 9, mr_id: 3, doctor_id: 28, doctor_name: "Dr. Sandeep Reddy", clinic: "Apollo Health City", scheduled_date: "2026-03-22", scheduled_time: "10:00", purpose: "Cardiology product briefing", priority: "high", status: "completed", estimated_duration: 40, notes: "Positive feedback received" },
-    { id: 10, mr_id: 1, hospital_id: 1, hospital_name: "Prasad Hospitals", scheduled_date: "2026-03-25", scheduled_time: "11:00", purpose: "Hospital supply agreement", priority: "high", status: "completed", estimated_duration: 60, notes: "Signed new contract" },
-    { id: 11, mr_id: 2, doctor_id: 32, doctor_name: "Dr. Manjula", clinic: "Care Hospitals", scheduled_date: "2026-03-26", scheduled_time: "15:00", purpose: "Gynecology products demo", priority: "medium", status: "completed", estimated_duration: 35, notes: "Order placed for new quarter" },
-    { id: 12, mr_id: 3, pharmacy_id: 24, pharmacy_name: "JANAGEN Generic Pharmacy", scheduled_date: "2026-03-28", scheduled_time: "10:30", purpose: "Generic medicines discussion", priority: "medium", status: "completed", estimated_duration: 30, notes: "Good relationship maintained" },
-    { id: 13, mr_id: 1, doctor_id: 15, doctor_name: "Dr. Ajit", clinic: "Ayu Health", scheduled_date: "2026-03-30", scheduled_time: "14:00", purpose: "AI Scheduled Visit", priority: "medium", status: "pending", estimated_duration: 30, notes: "Follow-up required" },
-    { id: 14, mr_id: 4, doctor_id: 29, doctor_name: "Dr. Guru N. Reddy", clinic: "Continental Hospitals", scheduled_date: "2026-03-15", scheduled_time: "11:00", purpose: "Product presentation", priority: "high", status: "completed", estimated_duration: 45, notes: "Excellent engagement" },
-    { id: 15, mr_id: 5, hospital_id: 5, hospital_name: "Global Hospitals", scheduled_date: "2026-03-17", scheduled_time: "10:00", purpose: "Hospital partnership discussion", priority: "high", status: "completed", estimated_duration: 50, notes: "Negotiating terms" },
-    { id: 16, mr_id: 4, pharmacy_id: 1, pharmacy_name: "Sri Vasavi Medical Hall", scheduled_date: "2026-03-09", scheduled_time: "15:00", purpose: "Retail pharmacy stock visit", priority: "medium", status: "completed", estimated_duration: 20, notes: "Restocked best sellers" },
-    { id: 17, mr_id: 1, doctor_id: 5, doctor_name: "Dr. Vikram Singh", clinic: "Singh Ortho & Spine Care", scheduled_date: "2026-04-06", scheduled_time: "11:00", purpose: "Ortho product presentation - Bone health range", priority: "high", status: "pending", estimated_duration: 45, notes: "Prepare samples for OrthoFlex and Calcium supplements" },
-    { id: 18, mr_id: 1, doctor_id: 10, doctor_name: "Dr. V. Prasad", clinic: "Whitus Hospitals", scheduled_date: "2026-04-06", scheduled_time: "10:00", purpose: "Quarterly product review - Cardiac range", priority: "medium", status: "completed", estimated_duration: 30, notes: "Follow up on previous order" },
-    { id: 19, mr_id: 2, doctor_id: 20, doctor_name: "Dr. K. S. Rao", clinic: "Care Hospitals", scheduled_date: "2026-04-06", scheduled_time: "14:00", purpose: "Diabetes product briefing", priority: "high", status: "pending", estimated_duration: 35, notes: "New Gluconorm samples" },
-    { id: 20, mr_id: 2, pharmacy_id: 18, pharmacy_name: "MedPlus Nacharam", scheduled_date: "2026-04-06", scheduled_time: "10:30", purpose: "Monthly stock assessment", priority: "medium", status: "pending", estimated_duration: 25, notes: "Review inventory levels" },
-    { id: 21, mr_id: 3, doctor_id: 35, doctor_name: "Dr. Anitha", clinic: "Anitha Maternity Home", scheduled_date: "2026-04-06", scheduled_time: "10:30", purpose: "Maternity vitamin range presentation", priority: "high", status: "pending", estimated_duration: 40, notes: "Bring brochures" },
-    { id: 22, mr_id: 3, hospital_id: 1, hospital_name: "Prasad Hospitals", scheduled_date: "2026-04-06", scheduled_time: "14:00", purpose: "Hospital procurement meeting", priority: "high", status: "pending", estimated_duration: 60, notes: "Discuss volume pricing" },
-    { id: 23, mr_id: 1, pharmacy_name: "Ankur Medicals", scheduled_date: "2026-04-06", scheduled_time: "14:30", purpose: "Restock check & new product intro", priority: "medium", status: "pending", estimated_duration: 25, notes: "New antibiotic range samples" }
-  ],
+  visit_schedules: (function() {
+    const today = new Date().toISOString().split('T')[0];
+    const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    const lastWeek = new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0];
+    const twoWeeksAgo = new Date(Date.now() - 14 * 86400000).toISOString().split('T')[0];
+    const threeWeeksAgo = new Date(Date.now() - 21 * 86400000).toISOString().split('T')[0];
+    return [
+      { id: 1, mr_id: 1, doctor_id: 5, doctor_name: "Dr. Vikram Singh", clinic: "Singh Ortho & Spine Care", scheduled_date: twoWeeksAgo, scheduled_time: "11:00", purpose: "Ortho product presentation - Bone health range", priority: "high", status: "completed", estimated_duration: 45, notes: "Prepare samples for OrthoFlex and Calcium supplements" },
+      { id: 2, mr_id: 1, doctor_id: 10, doctor_name: "Dr. V. Prasad", clinic: "Whitus Hospitals", scheduled_date: threeWeeksAgo, scheduled_time: "10:00", purpose: "Product briefing", priority: "medium", status: "completed", estimated_duration: 30, notes: "Discussed new cardiac range" },
+      { id: 3, mr_id: 2, doctor_id: 20, doctor_name: "Dr. K. S. Rao", clinic: "Care Hospitals", scheduled_date: threeWeeksAgo, scheduled_time: "14:00", purpose: "Quarterly review", priority: "medium", status: "completed", estimated_duration: 30, notes: "Good response to product lineup" },
+      { id: 4, mr_id: 1, doctor_id: 25, doctor_name: "Dr. Ramesh", clinic: "Shiva Hospital", scheduled_date: twoWeeksAgo, scheduled_time: "11:00", purpose: "New product launch", priority: "high", status: "completed", estimated_duration: 45, notes: "Approved for bulk purchase" },
+      { id: 5, mr_id: 2, doctor_id: 30, doctor_name: "Dr. Sreenivas", clinic: "Sree Satya Laparoscopy", scheduled_date: twoWeeksAgo, scheduled_time: "15:00", purpose: "Follow-up visit", priority: "medium", status: "completed", estimated_duration: 30, notes: "Placed order for surgical supplies" },
+      { id: 6, mr_id: 3, doctor_id: 35, doctor_name: "Dr. Anitha", clinic: "Anitha Maternity Home", scheduled_date: lastWeek, scheduled_time: "10:30", purpose: "Maternity products demo", priority: "high", status: "completed", estimated_duration: 40, notes: "Very interested in new range" },
+      { id: 7, mr_id: 1, pharmacy_id: 12, pharmacy_name: "Ankur Medicals", scheduled_date: lastWeek, scheduled_time: "11:00", purpose: "Pharmacy stock replenishment", priority: "medium", status: "completed", estimated_duration: 25, notes: "Ordered priority medicines" },
+      { id: 8, mr_id: 2, pharmacy_id: 18, pharmacy_name: "MedPlus Nacharam", scheduled_date: lastWeek, scheduled_time: "14:00", purpose: "Chain store visit", priority: "high", status: "completed", estimated_duration: 35, notes: "Chain coordinator meeting scheduled" },
+      { id: 9, mr_id: 3, doctor_id: 28, doctor_name: "Dr. Sandeep Reddy", clinic: "Apollo Health City", scheduled_date: lastWeek, scheduled_time: "10:00", purpose: "Cardiology product briefing", priority: "high", status: "completed", estimated_duration: 40, notes: "Positive feedback received" },
+      { id: 10, mr_id: 1, hospital_id: 1, hospital_name: "Prasad Hospitals", scheduled_date: lastWeek, scheduled_time: "11:00", purpose: "Hospital supply agreement", priority: "high", status: "completed", estimated_duration: 60, notes: "Signed new contract" },
+      { id: 11, mr_id: 2, doctor_id: 32, doctor_name: "Dr. Manjula", clinic: "Care Hospitals", scheduled_date: yesterday, scheduled_time: "15:00", purpose: "Gynecology products demo", priority: "medium", status: "completed", estimated_duration: 35, notes: "Order placed for new quarter" },
+      { id: 12, mr_id: 3, pharmacy_id: 24, pharmacy_name: "JANAGEN Generic Pharmacy", scheduled_date: yesterday, scheduled_time: "10:30", purpose: "Generic medicines discussion", priority: "medium", status: "completed", estimated_duration: 30, notes: "Good relationship maintained" },
+      { id: 13, mr_id: 1, doctor_id: 15, doctor_name: "Dr. Ajit", clinic: "Ayu Health", scheduled_date: yesterday, scheduled_time: "14:00", purpose: "AI Scheduled Visit", priority: "medium", status: "completed", estimated_duration: 30, notes: "Follow-up required" },
+      { id: 14, mr_id: 4, doctor_id: 29, doctor_name: "Dr. Guru N. Reddy", clinic: "Continental Hospitals", scheduled_date: lastWeek, scheduled_time: "11:00", purpose: "Product presentation", priority: "high", status: "completed", estimated_duration: 45, notes: "Excellent engagement" },
+      { id: 15, mr_id: 5, hospital_id: 5, hospital_name: "Global Hospitals", scheduled_date: lastWeek, scheduled_time: "10:00", purpose: "Hospital partnership discussion", priority: "high", status: "completed", estimated_duration: 50, notes: "Negotiating terms" },
+      { id: 16, mr_id: 4, pharmacy_id: 1, pharmacy_name: "Sri Vasavi Medical Hall", scheduled_date: yesterday, scheduled_time: "15:00", purpose: "Retail pharmacy stock visit", priority: "medium", status: "completed", estimated_duration: 20, notes: "Restocked best sellers" },
+      { id: 17, mr_id: 1, doctor_id: 5, doctor_name: "Dr. Vikram Singh", clinic: "Singh Ortho & Spine Care", doctor_name_display: "Dr. Vikram Singh", scheduled_date: today, scheduled_time: "09:00", purpose: "Ortho product presentation - Bone health range", priority: "high", status: "pending", estimated_duration: 45, notes: "Prepare samples for OrthoFlex and Calcium supplements" },
+      { id: 18, mr_id: 1, doctor_id: 10, doctor_name: "Dr. V. Prasad", clinic: "Whitus Hospitals", scheduled_date: today, scheduled_time: "11:00", purpose: "Quarterly product review - Cardiac range", priority: "medium", status: "pending", estimated_duration: 30, notes: "Follow up on previous order" },
+      { id: 19, mr_id: 2, doctor_id: 20, doctor_name: "Dr. K. S. Rao", clinic: "Care Hospitals", scheduled_date: today, scheduled_time: "14:00", purpose: "Diabetes product briefing", priority: "high", status: "pending", estimated_duration: 35, notes: "New Gluconorm samples" },
+      { id: 20, mr_id: 2, pharmacy_id: 18, pharmacy_name: "MedPlus Nacharam", doctor_name: "MedPlus Nacharam", clinic: "MedPlus Nacharam", scheduled_date: today, scheduled_time: "10:30", purpose: "Monthly stock assessment", priority: "medium", status: "pending", estimated_duration: 25, notes: "Review inventory levels" },
+      { id: 21, mr_id: 3, doctor_id: 35, doctor_name: "Dr. Anitha", clinic: "Anitha Maternity Home", scheduled_date: today, scheduled_time: "10:30", purpose: "Maternity vitamin range presentation", priority: "high", status: "pending", estimated_duration: 40, notes: "Bring brochures" },
+      { id: 22, mr_id: 3, hospital_id: 1, hospital_name: "Prasad Hospitals", doctor_name: "Prasad Hospitals", clinic: "Prasad Hospitals", scheduled_date: today, scheduled_time: "14:00", purpose: "Hospital procurement meeting", priority: "high", status: "pending", estimated_duration: 60, notes: "Discuss volume pricing" },
+      { id: 23, mr_id: 1, pharmacy_id: 12, pharmacy_name: "Ankur Medicals", doctor_name: "Ankur Medicals", clinic: "Ankur Medicals", scheduled_date: today, scheduled_time: "14:30", purpose: "Restock check & new product intro", priority: "medium", status: "pending", estimated_duration: 25, notes: "New antibiotic range samples" },
+      { id: 24, mr_id: 1, doctor_id: 4, doctor_name: "Dr. S. Ramachandran", clinic: "Apollo Hospital", scheduled_date: tomorrow, scheduled_time: "10:00", purpose: "Neurology product briefing", priority: "high", status: "pending", estimated_duration: 45, notes: "New neuro range introductory visit" },
+      { id: 25, mr_id: 1, doctor_id: 7, doctor_name: "Dr. Fathima", clinic: "Medicover Hospitals", scheduled_date: tomorrow, scheduled_time: "13:00", purpose: "Oncology samples delivery", priority: "high", status: "pending", estimated_duration: 30, notes: "Bring updated clinical data" },
+    ];
+  })(),
 
   pharmacies: [
     { id: 1, name: "Sri Vasavi Medical Hall", owner_name: "Vasudev Rao", phone: "+91 98496 65224", email: "", address: "Near Whitus Hospitals, Habsiguda Main Rd, Nagendra Nagar, Habsiguda", territory: "Habsiguda", tier: "B", credit_limit: 50000, credit_days: 30, total_purchases: 15, total_value: 125000, last_purchase_date: "2026-03-20", status: "active", area: "Habsiguda", rating: 4.8, notes: "Medical Store, Home Delivery, Discounts", shop_hours: "8:30 AM – 11:30 PM", mr_visit_window: "10 AM–12 PM & 3–5 PM", type: "Independent Medical Hall", discount_notes: "Home Delivery | 15–20% Discount | WhatsApp Orders" },
@@ -714,6 +724,8 @@ let nextId = {
   approval_requests: 3,
   entity_credits: 3,
   mr_locations: 4,
+  visit_records: 1,
+  missed_visits: 1,
   daily_call_plans: 1
 };
 
@@ -721,7 +733,7 @@ async function startServer() {
   const app = express();
   const PORT = parseInt(process.env.PORT || '3000', 10);
 
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
 
   // Authentication middleware for demo/production
   // Expects: Authorization: Bearer <user_email> OR x-user-email header
@@ -802,6 +814,10 @@ async function startServer() {
   });
 
   // API Routes
+  app.all("/api/*", (req, res, next) => {
+    console.log(`[HTTP] ${req.method} ${req.url}`);
+    next();
+  });
 
   // GET /api/mrs - Admins see all, MRs see only their own record
   app.get("/api/mrs", (req, res) => {
@@ -1057,7 +1073,10 @@ async function startServer() {
 
   // AI-Optimized Daily Briefing
   // Returns an optimized schedule with AI scoring, routing, and expected value
+  // AI-Optimized Daily Briefing
+  // Returns an optimized schedule with AI scoring, routing, and expected value
   app.get("/api/daily-briefing", (req, res) => {
+    console.log(`[API] Daily Briefing requested: mr_id=${req.query.mr_id}, date=${req.query.date}, user=${req.currentUser?.email}`);
     const user = req.currentUser;
     let mrId: number | null = null;
 
@@ -1401,13 +1420,67 @@ async function startServer() {
       ...req.body
     };
     data.visit_recordings.push(newRecording);
+    
+    // Task 1: Auto-Lead Creation
+    if (req.body.isLead && req.body.leadConfidence > 60) {
+      data.leads.push({
+        id: nextId.leads++,
+        doctor_name: req.body.entityName || req.body.entity_name || "Unknown",
+        specialty: req.body.entity_type === 'doctor' ? "General" : (req.body.entity_type || "Unknown"),
+        territory: mr?.territory || "Unassigned",
+        comments: req.body.leadReasoning || (req.body.transcript ? req.body.transcript.substring(0, 100) : "Auto-created lead"),
+        status: "new",
+        priority: req.body.leadConfidence > 80 ? "high" : "medium",
+        assigned_mr_id: req.body.mr_id,
+        created_at: new Date().toISOString()
+      });
+    }
+
+    // Task 2: Follow-up Scheduling
+    if (req.body.followUpNeeded) {
+      // Suggest next contact date based on lead probability
+      const nextDate = new Date();
+      nextDate.setDate(nextDate.getDate() + (req.body.leadConfidence > 80 ? 2 : 5));
+      
+      // Avoid weekends
+      if (nextDate.getDay() === 0) nextDate.setDate(nextDate.getDate() + 1); // Sunday -> Monday
+      if (nextDate.getDay() === 6) nextDate.setDate(nextDate.getDate() + 2); // Saturday -> Monday
+
+      const nextDateString = nextDate.toISOString().split('T')[0];
+      
+      data.visit_schedules.push({
+        id: nextId.visit_schedules++,
+        mr_id: req.body.mr_id,
+        doctor_name: req.body.entityName || req.body.entity_name || "Unknown",
+        scheduled_date: nextDateString,
+        scheduled_time: "10:30",
+        purpose: req.body.followUpPurpose || "AI Suggested Follow-up",
+        priority: req.body.leadConfidence > 80 ? "high" : "medium",
+        status: "pending",
+        estimated_duration: 30,
+        notes: "Auto-scheduled based on AI transcript analysis: " + req.body.followUpPurpose
+      });
+      
+      data.daily_call_plans.push({
+        id: nextId.daily_call_plans++,
+        mr_id: req.body.mr_id,
+        date: nextDateString,
+        entity_name: req.body.entityName || req.body.entity_name || "Unknown",
+        entity_type: req.body.entity_type || "Unknown",
+        planned_time: "10:30",
+        status: "pending",
+        priority: req.body.leadConfidence > 80 ? "high" : "medium",
+        completed: false
+      });
+    }
+
     if (req.body.shouldRequestApproval) {
       data.approval_requests.push({
         id: nextId.approval_requests++,
         mr_id: req.body.mr_id,
         mr_name: mr?.name || "Unknown",
         type: "sale",
-        description: `Sale/Lead from ${req.body.entityName}`,
+        description: `Sale/Lead from ${req.body.entityName || req.body.entity_name}`,
         details: { isLead: req.body.isLead, saleAmount: req.body.saleAmount, reason: req.body.leadReasoning },
         status: "pending",
         created_at: new Date().toISOString(),
@@ -1545,13 +1618,41 @@ async function startServer() {
       const mrId = Number(req.query.mr_id);
       records = records.filter(v => v.mr_id === mrId);
     }
+
+    if (req.query.entity_name) {
+      const entityName = String(req.query.entity_name);
+      records = records.filter(v => v.entity_name === entityName || v.doctor_name === entityName);
+    }
+
     res.json(records);
   });
 
   app.post("/api/visit-records", (req, res) => {
     const record = req.body;
+    console.log(`[Visit] New record for MR ${record.mr_id} at ${record.entity_name}`);
     const newRecord = { ...record, id: nextId.visit_records++, created_at: record.created_at || new Date().toISOString() };
+    
+    // Update the schedule if it exists
+    if (record.scheduled_visit_id) {
+      const schIdx = data.visit_schedules.findIndex(s => s.id === Number(record.scheduled_visit_id));
+      if (schIdx !== -1) {
+        data.visit_schedules[schIdx].status = 'completed';
+        (data.visit_schedules[schIdx] as any).completed_at = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        console.log(`[Visit] Marked schedule ${record.scheduled_visit_id} as completed`);
+      }
+    }
+
     data.visit_records.push(newRecord);
+    // Backward compatibility with older components
+    (data.doctor_visits as any[]).push({
+      ...newRecord,
+      doctor_name: newRecord.entity_name,
+      visit_date: newRecord.created_at.split('T')[0],
+      visit_time: new Date().toLocaleTimeString(),
+      notes: newRecord.doctor_feedback || newRecord.key_discussion
+    });
+
+    console.log(`[Visit] Saved as ID ${newRecord.id}. Total records: ${data.visit_records.length}`);
 
     // If this is a missed visit, create alert and notify admin
     if (record.is_missed || record.status === 'missed') {
@@ -1601,6 +1702,167 @@ async function startServer() {
       missed = missed.filter(m => m.mr_id === user.mr_id);
     }
     res.json(missed);
+  });
+
+  // === Daily Call Plan ===
+  app.get("/api/daily-call-plan", (req, res) => {
+    const user = req.currentUser;
+    const mrId = req.query.mr_id ? Number(req.query.mr_id) : (user?.role === 'mr' ? user.mr_id : null);
+    const date = req.query.date ? String(req.query.date) : new Date().toISOString().split('T')[0];
+
+    if (!mrId) return res.json([]);
+
+    // Build plans from visit_schedules for this MR + date
+    const todaySchedules = data.visit_schedules.filter(
+      s => s.mr_id === mrId && s.scheduled_date === date
+    );
+
+    // Check if we already have stored plans for completed visits
+    const storedPlans = (data as any).daily_call_plans_store || [];
+    const storedForToday = storedPlans.filter((p: any) => p.mr_id === mrId && p.date === date);
+
+    const plans = todaySchedules.map((schedule: any) => {
+      // Check if there's a stored completed outcome for this schedule
+      const stored = storedForToday.find((sp: any) => sp.schedule_id === schedule.id);
+
+      // Enrich with entity metadata
+      const entityName = schedule.doctor_name || schedule.pharmacy_name || schedule.hospital_name || 'Unknown';
+      const entityType = schedule.doctor_id ? 'doctor' : schedule.pharmacy_id ? 'chemist' : schedule.hospital_id ? 'hospital' : 'doctor';
+
+      // Look up entity details for tier, area, etc.
+      let tier = 'C';
+      let area = '';
+      let phone = '';
+      if (entityType === 'doctor') {
+        const doc = (data.doctors as any[]).find(d => d.id === schedule.doctor_id || d.name === entityName);
+        if (doc) { tier = doc.tier || 'C'; area = doc.area || doc.territory || ''; phone = doc.phone || ''; }
+      } else if (entityType === 'chemist') {
+        const pharm = (data.pharmacies as any[]).find(p => p.id === schedule.pharmacy_id || p.name === entityName);
+        if (pharm) { tier = pharm.tier || 'C'; area = pharm.area || pharm.territory || ''; phone = pharm.phone || ''; }
+      } else if (entityType === 'hospital') {
+        const hosp = (data.hospitals as any[]).find(h => h.id === schedule.hospital_id || h.name === entityName);
+        if (hosp) { tier = hosp.tier || 'C'; area = hosp.area || hosp.territory || ''; phone = hosp.phone || ''; }
+      }
+
+      // Calculate days since last visit
+      const pastVisits = (data.visit_records as any[]).filter(
+        v => v.mr_id === mrId && (v.entity_name === entityName || v.doctor_name === entityName)
+      );
+      const lastVisit = pastVisits.length > 0
+        ? pastVisits.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
+        : null;
+      const daysSince = lastVisit
+        ? Math.floor((Date.now() - new Date(lastVisit.created_at).getTime()) / 86400000)
+        : 30;
+
+      return {
+        id: schedule.id,
+        schedule_id: schedule.id,
+        mr_id: mrId,
+        date,
+        entity_name: entityName,
+        entity_type: entityType,
+        clinic: schedule.clinic || '',
+        area,
+        tier,
+        phone,
+        planned_time: schedule.scheduled_time || '10:00',
+        priority: schedule.priority || 'medium',
+        purpose: schedule.purpose || '',
+        status: stored ? 'completed' : (schedule.status === 'completed' ? 'completed' : schedule.status === 'in_progress' ? 'in_progress' : 'planned'),
+        days_since_last_visit: daysSince,
+        visit_outcome: stored?.visit_outcome || null,
+        completed: stored ? true : schedule.status === 'completed',
+      };
+    });
+
+    res.json(plans);
+  });
+
+  app.post("/api/daily-call-plan", (req, res) => {
+    // Create an unscheduled/ad-hoc plan entry (also creates a visit_schedule)
+    const body = req.body;
+    const newSchedule: any = {
+      id: nextId.visit_schedules++,
+      mr_id: body.mr_id,
+      doctor_name: body.doctor_name || body.entity_name,
+      clinic: body.clinic || '',
+      scheduled_date: body.scheduled_date || new Date().toISOString().split('T')[0],
+      scheduled_time: body.scheduled_time || body.plannedTime || '10:00',
+      purpose: body.purpose || 'Unscheduled Visit',
+      priority: body.priority || 'medium',
+      status: 'pending',
+      estimated_duration: 30,
+      notes: 'Added via Daily Call Plan',
+    };
+    data.visit_schedules.push(newSchedule);
+    console.log(`[DailyCallPlan] Created unscheduled visit ${newSchedule.id} for MR ${body.mr_id}`);
+    res.status(201).json(newSchedule);
+  });
+
+  app.post("/api/daily-call-plan/:id/complete", (req, res) => {
+    const scheduleId = Number(req.params.id);
+    const outcome = req.body;
+    console.log(`[DailyCallPlan] Completing plan for schedule ${scheduleId}`);
+
+    // Mark the schedule as completed
+    const schIdx = data.visit_schedules.findIndex(s => s.id === scheduleId);
+    if (schIdx !== -1) {
+      data.visit_schedules[schIdx].status = 'completed';
+      (data.visit_schedules[schIdx] as any).completed_at = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    // Store the outcome
+    if (!(data as any).daily_call_plans_store) {
+      (data as any).daily_call_plans_store = [];
+    }
+    const completedPlan = {
+      id: nextId.daily_call_plans++,
+      schedule_id: scheduleId,
+      mr_id: outcome.mr_id,
+      date: outcome.scheduled_date || new Date().toISOString().split('T')[0],
+      status: 'completed',
+      visit_outcome: {
+        check_in_time: outcome.check_in_time,
+        check_out_time: outcome.check_out_time,
+        speaking_time: outcome.speaking_time,
+        products_detailed: outcome.products_detailed,
+        doctor_feedback: outcome.doctor_feedback,
+        samples_given: outcome.samples_given,
+        order_value: outcome.order_value || 0,
+        order_product: outcome.order_product,
+        next_followup: outcome.next_followup,
+        conversation_summary: outcome.conversation_summary,
+      },
+      completed_at: new Date().toISOString(),
+    };
+    (data as any).daily_call_plans_store.push(completedPlan);
+
+    // Also save as a permanent visit record for admin tracking
+    const visitRecord = {
+      id: nextId.visit_records++,
+      mr_id: outcome.mr_id,
+      mr_name: outcome.mr_name || (data.mrs.find(m => m.id === outcome.mr_id)?.name) || 'Unknown',
+      entity_name: outcome.doctor_name,
+      entity_type: 'doctor',
+      clinic: schIdx !== -1 ? (data.visit_schedules[schIdx] as any).clinic : '',
+      scheduled_visit_id: scheduleId,
+      check_in_time: outcome.check_in_time,
+      check_out_time: outcome.check_out_time,
+      speaking_time_seconds: (outcome.speaking_time || 15) * 60,
+      products_detailed: outcome.products_detailed,
+      doctor_feedback: outcome.doctor_feedback,
+      samples_given: outcome.samples_given,
+      key_discussion: outcome.conversation_summary,
+      order_placed: outcome.order_value || 0,
+      follow_up_date: outcome.next_followup,
+      status: 'completed',
+      created_at: new Date().toISOString(),
+    };
+    data.visit_records.push(visitRecord);
+
+    console.log(`[DailyCallPlan] Visit completed. Record ID: ${visitRecord.id}. Schedule: ${scheduleId}`);
+    res.json(completedPlan);
   });
 
   // Daily Summary for MR

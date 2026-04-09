@@ -32,6 +32,9 @@ export default function LeadsManagement() {
   const [batchForecasting, setBatchForecasting] = useState(false);
   const [batchResults, setBatchResults] = useState<AnalysisResult[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [forecastProgress, setForecastProgress] = useState(0);
+  const [conversionChecking, setConversionChecking] = useState(false);
+  const [conversionProgress, setConversionProgress] = useState(0);
 
   useEffect(() => {
     Promise.all([
@@ -60,6 +63,52 @@ export default function LeadsManagement() {
       status: 'assigned'
     });
     setLeads(prev => prev.map(l => l.id === lead.id ? updatedLead : l));
+  };
+
+  const handleConvertLead = async (leadId: number) => {
+    try {
+      const updatedLead = await api.leads.update(leadId, { status: 'converted' });
+      setLeads(prev => prev.map(l => l.id === leadId ? updatedLead : l));
+    } catch (e) {
+      console.error('Conversion error:', e);
+    }
+  };
+
+  const handleConversionCheck = async () => {
+    setConversionChecking(true);
+    setConversionProgress(0);
+
+    try {
+      const [allSales] = await Promise.all([
+        api.sales?.getAll ? api.sales.getAll() : Promise.resolve([])
+      ]);
+      const activeLeads = leads.filter(l => l.status === 'assigned');
+      let completed = 0;
+      
+      const salesList = (allSales as any[]) || [];
+
+      for (const lead of activeLeads) {
+        // Find matching sale
+        const docName = lead.doctor_name.toLowerCase().replace('dr.', '').trim();
+        const hasSale = salesList.some((s: any) => {
+           const custName = (s.customer_name || '').toLowerCase();
+           return custName.includes(docName) || docName.includes(custName);
+        });
+
+        if (hasSale) {
+          const updatedLead = await api.leads.update(lead.id, { status: 'converted' });
+          setLeads(prev => prev.map(l => l.id === lead.id ? updatedLead : l));
+        }
+
+        await new Promise(r => setTimeout(r, 150));
+        completed++;
+        setConversionProgress(Math.round((completed / activeLeads.length) * 100));
+      }
+    } catch (error) {
+      console.error('Auto-conversion error:', error);
+    } finally {
+      setConversionChecking(false);
+    }
   };
 
   const handleAIForecast = async (lead: Lead) => {
@@ -97,9 +146,10 @@ export default function LeadsManagement() {
     }
   };
 
-  const handleForecastAll = () => {
+  const handleForecastAll = async () => {
     setBatchForecasting(true);
     setBatchResults([]);
+    setForecastProgress(0);
 
     const completedVisits = visits.filter(v =>
       v.status === 'completed' &&
@@ -107,9 +157,16 @@ export default function LeadsManagement() {
     );
 
     const results: AnalysisResult[] = [];
+    const unassignedLeads = leads.filter(l => l.status !== 'assigned');
+    const totalTasks = unassignedLeads.length + completedVisits.length;
+    let completedTasks = 0;
+
+    const updateProgress = () => {
+      completedTasks++;
+      setForecastProgress(Math.round((completedTasks / totalTasks) * 100));
+    };
 
     // 1) Assign unassigned existing leads
-    const unassignedLeads = leads.filter(l => l.status !== 'assigned');
     for (const lead of unassignedLeads) {
       const matchedMr = mrs.find(mr => mr.territory === lead.territory) || mrs[0];
       if (matchedMr) {
@@ -119,13 +176,13 @@ export default function LeadsManagement() {
           assigned_mr_name: matchedMr.name,
           status: 'assigned' as const
         };
-        api.leads.update(lead.id, {
+        await api.leads.update(lead.id, {
           assigned_mr_id: matchedMr.id,
           assigned_mr_name: matchedMr.name,
           status: 'assigned'
-        }).then(updated => {
-          setLeads(prev => prev.map(l => l.id === lead.id ? updated : l));
         });
+        setLeads(prev => prev.map(l => l.id === lead.id ? updatedLead : l));
+        
         results.push({
           is_lead: true,
           doctor_name: lead.doctor_name,
@@ -138,6 +195,9 @@ export default function LeadsManagement() {
           mr_name: matchedMr.name
         });
       }
+      // simulate network/ai delay for visual progress
+      await new Promise(r => setTimeout(r, 100));
+      updateProgress();
     }
 
     // 2) Analyze visit transcripts for potential new leads
@@ -182,7 +242,7 @@ export default function LeadsManagement() {
             mr_name: visitMr.name || 'Unknown'
           });
         }
-      } else if (positiveCount === 0) {
+      } else {
         results.push({
           is_lead: false,
           doctor_name: visit.entity_name || 'Unknown',
@@ -195,6 +255,10 @@ export default function LeadsManagement() {
           mr_name: mr?.name || 'Unknown'
         });
       }
+      
+      // simulate AI processing delay
+      await new Promise(r => setTimeout(r, 200));
+      updateProgress();
     }
 
     setBatchResults(results);
@@ -204,10 +268,15 @@ export default function LeadsManagement() {
   const confirmedLeads = batchResults.filter(r => r.is_lead);
   const nonLeads = batchResults.filter(r => !r.is_lead);
 
-  const filteredLeads = leads.filter(l =>
-    l.doctor_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    l.comments.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredLeads = leads
+    .filter(l =>
+      l.doctor_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (l.comments || "").toLowerCase().includes(searchTerm.toLowerCase())
+    )
+    .sort((a, b) => {
+      const priorityWeights = { high: 3, medium: 2, low: 1 };
+      return (priorityWeights[b.priority] || 0) - (priorityWeights[a.priority] || 0);
+    });
 
   if (loading) {
     return (
@@ -237,16 +306,38 @@ export default function LeadsManagement() {
             />
           </div>
           <button
+            onClick={handleConversionCheck}
+            disabled={conversionChecking}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {conversionChecking ? (
+              <div className="flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Checking ({conversionProgress}%)</span>
+              </div>
+            ) : (
+              <>
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Auto-Convert</span>
+              </>
+            )}
+          </button>
+          <button
             onClick={handleForecastAll}
-            disabled={batchForecasting}
+            disabled={batchForecasting || conversionChecking}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {batchForecasting ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <div className="flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Processing ({forecastProgress}%)</span>
+              </div>
             ) : (
-              <TrendingUp className="w-4 h-4" />
+              <>
+                <TrendingUp className="w-4 h-4" />
+                <span>Forecast All</span>
+              </>
             )}
-            <span>Forecast All</span>
           </button>
         </div>
       </div>
@@ -390,28 +481,45 @@ export default function LeadsManagement() {
                     )}
                   </div>
 
-                  <button
-                    onClick={() => handleAIForecast(lead)}
-                    disabled={forecastingId === lead.id}
-                    className={cn(
-                      "flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-all w-full md:w-auto justify-center",
-                      lead.status === 'assigned'
-                        ? "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                        : "bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:shadow-lg hover:scale-[1.02]"
-                    )}
-                  >
-                    {forecastingId === lead.id ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>AI Forecasting...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Zap className="w-4 h-4" />
-                        <span>{lead.status === 'assigned' ? 'Re-Forecast' : 'Forecast & Assign'}</span>
-                      </>
-                    )}
-                  </button>
+                  {lead.status !== 'converted' && (
+                    <div className="flex gap-2 w-full md:w-auto">
+                      <button
+                        onClick={() => handleAIForecast(lead)}
+                        disabled={forecastingId === lead.id}
+                        className={cn(
+                          "flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-all flex-1 md:flex-none justify-center",
+                          lead.status === 'assigned'
+                            ? "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                            : "bg-blue-600 text-white hover:bg-blue-700"
+                        )}
+                      >
+                        {forecastingId === lead.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+                        {lead.status === 'assigned' ? 'Update AI' : 'Assign'}
+                      </button>
+
+                      {lead.status === 'assigned' && (
+                        <>
+                          <button
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-50 text-green-700 hover:bg-green-100 rounded text-sm font-medium"
+                          >
+                            <Calendar className="w-3.5 h-3.5" /> Schedule
+                          </button>
+                          
+                          <button
+                            onClick={() => handleConvertLead(lead.id)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white hover:bg-purple-700 rounded text-sm font-medium transition-colors"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Convert
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  {lead.status === 'converted' && (
+                    <div className="flex items-center gap-2 text-green-600 font-bold bg-green-50 px-4 py-2 rounded-lg border border-green-200">
+                      <CheckCircle2 className="w-5 h-5" /> Successfully Converted
+                    </div>
+                  )}
                 </div>
               </div>
             </motion.div>

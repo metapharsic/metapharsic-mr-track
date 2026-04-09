@@ -38,6 +38,9 @@ export default function MRFieldTracker() {
   const [gpsLoading, setGpsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [gpsError, setGpsError] = useState<string | null>(null);
+  const [pastHistory, setPastHistory] = useState<any[]>([]);
+  const [fetchingHistory, setFetchingHistory] = useState(false);
+  const [visitStartTime, setVisitStartTime] = useState<number | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   const mrProfile = mrs.find(m => m.id === user?.mr_id || m.id === user?.id) || mrs[0];
@@ -65,12 +68,47 @@ export default function MRFieldTracker() {
     ]).then(([recs, sum]) => {
       const daySched = schedules.filter((v: any) => {
         const hasRecord = recs.some((r: any) => r.scheduled_visit_id === v.id || r.entity_name === v.doctor_name);
-        return v.mr_id === mrId && !hasRecord;
+        return v.mr_id === mrId && !hasRecord && v.status !== 'completed';
       });
       setTodayVisits(daySched);
       setSummary(sum);
+
+      // Auto-resume if there's an in-progress visit
+      const inProgress = daySched.find((v: any) => v.status === 'in_progress');
+      if (inProgress && !activeVisit) {
+        setActiveVisit({
+          id: inProgress.id,
+          entityName: inProgress.doctor_name,
+          entityType: inProgress.entity_type || 'doctor',
+          clinic: inProgress.clinic,
+          scheduled_time: inProgress.scheduled_time
+        });
+        setCurrentStep('gps');
+      }
     }).catch(() => {});
-  }, [mrId, schedules]);
+  }, [mrId, schedules, activeVisit]);
+
+  // Load history when active visit starts
+  useEffect(() => {
+    if (activeVisit) {
+      setVisitStartTime(Date.now());
+      setFetchingHistory(true);
+      const entityName = activeVisit.entityName || activeVisit.doctor_name;
+      api.visitRecords.getAll(undefined, entityName)
+        .then(records => {
+          // Sort by date/id descending and take top 3
+          const sorted = records.sort((a: any, b: any) => 
+            new Date(b.created_at || b.visit_date).getTime() - new Date(a.created_at || a.visit_date).getTime()
+          ).slice(0, 3);
+          setPastHistory(sorted);
+        })
+        .finally(() => setFetchingHistory(false))
+        .catch(() => {});
+    } else {
+      setPastHistory([]);
+    }
+  }, [activeVisit]);
+
 
   const captureGps = useCallback((onSuccess: (loc: { lat: number; lng: number; accuracy?: number }) => void) => {
     setGpsLoading(true);
@@ -117,19 +155,24 @@ export default function MRFieldTracker() {
     setSubmitting(true);
     try {
       const payload = {
+        scheduled_visit_id: activeVisit.id || null,
         mr_id: mrId,
-        entity_name: activeVisit?.entityName || activeVisit?.name || activeVisit?.doctor_name,
-        entity_type: activeVisit?.entityType || activeVisit?.entity_type || 'doctor',
-        scheduled_visit_id: activeVisit?.id || null,
+        mr_name: user?.name,
+        entity_name: activeVisit.entityName || activeVisit.doctor_name || activeVisit.pharmacy_name || activeVisit.hospital_name || 'Unknown Entity',
+        entity_type: activeVisit.entityType || (activeVisit.doctor_name ? 'doctor' : activeVisit.pharmacy_name ? 'pharmacy' : activeVisit.hospital_name ? 'hospital' : 'doctor'),
+        clinic: activeVisit.clinic || activeVisit.pharmacy_name || activeVisit.hospital_name,
         check_in_lat: gpsCheckin?.lat,
         check_in_lng: gpsCheckin?.lng,
-        check_in_time: new Date().toISOString(),
+        check_in_time: gpsCheckin ? new Date().toISOString() : null, // Record precise check-in
+        arrival_time: new Date().toISOString(), // Structured for Admin
         check_out_lat: gpsCheckout?.lat,
         check_out_lng: gpsCheckout?.lng,
         check_out_time: new Date().toISOString(),
+        duration_minutes: visitStartTime ? Math.round((new Date().getTime() - visitStartTime) / 60000) : 0,
         photo_data_url: photoDataUrl,
         recording_id: recordingData?.id,
         transcript: recordingData?.transcript,
+        speaking_time_seconds: recordingData ? 30 : 0, // Mock duration or from recorder
         products_detailed: outcomeData.productsDetailed,
         samples_given: outcomeData.samplesGiven,
         key_discussion: outcomeData.keyDiscussion,
@@ -137,6 +180,7 @@ export default function MRFieldTracker() {
         order_placed: outcomeData.orderPlaced,
         follow_up_date: outcomeData.followUpDate || null,
         status: 'completed',
+        created_at: new Date().toISOString()
       };
       await api.visitRecords.create(payload);
       addNotification({
@@ -147,8 +191,9 @@ export default function MRFieldTracker() {
       });
       setTodayVisits(prev => prev.filter((v: any) => v.id !== activeVisit?.id));
       resetVisitState();
-    } catch {
-      addNotification({ title: 'Visit Submission Failed', body: 'Could not save the visit record. Please try again.', type: 'error', mrId });
+    } catch (error) {
+      console.error('Visit submission error:', error);
+      addNotification({ title: 'Visit Submission Failed', message: 'Could not save the visit record. Please try again.', type: 'error' });
     }
     setSubmitting(false);
   };
@@ -192,9 +237,9 @@ export default function MRFieldTracker() {
         <h3 className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-2"><Calendar className="w-4 h-4 text-blue-600" />Today's Schedule ({todayVisits.length})</h3>
         {todayVisits.length === 0 ? (
           <div className="bg-white border border-gray-200 rounded-xl p-6 text-center text-gray-400 text-sm">No pending visits left for today.</div>
-        ) : (
-          <div className="space-y-2">
-            {todayVisits.map(v => (
+        ) : todayVisits.filter(v => v.status !== 'in_progress').length > 0 ? (
+          <div className="space-y-3">
+            {todayVisits.filter(v => v.status !== 'in_progress').map((v) => (
               <div key={v.id} className="bg-white border border-gray-200 rounded-xl p-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm">{v.scheduled_time}</div>
@@ -212,7 +257,7 @@ export default function MRFieldTracker() {
               </div>
             ))}
           </div>
-        )}
+        ) : null}
       </div>
 
       {!activeVisit && todayVisits.length === 0 && (
@@ -225,6 +270,38 @@ export default function MRFieldTracker() {
       {/* Active Visit Flow */}
       {activeVisit && (
         <div className="bg-white border border-gray-200 rounded-2xl p-6 space-y-4">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">{activeVisit.entityName || activeVisit.doctor_name}</h2>
+              <p className="text-sm text-gray-500">{activeVisit.clinic}</p>
+            </div>
+            <button onClick={resetVisitState} className="p-2 hover:bg-gray-100 rounded-full text-gray-400">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Past History Context Section - EXPERT FEATURE */}
+          {pastHistory.length > 0 && (
+            <div className="bg-blue-50/50 border border-blue-100 rounded-xl p-4 mb-4">
+              <h4 className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <FileText className="w-3.5 h-3.5" /> Past Interaction Context
+              </h4>
+              <div className="space-y-3">
+                {pastHistory.map((h, idx) => (
+                  <div key={idx} className="bg-white/60 p-2.5 rounded-lg border border-blue-50 text-[13px]">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="font-bold text-gray-700">{new Date(h.created_at || h.visit_date).toLocaleDateString()}</span>
+                      <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-bold">SALE: ₹{h.order_placed || h.order_value || 0}</span>
+                    </div>
+                    <p className="text-gray-600 italic line-clamp-2">"{(h.doctor_feedback || h.notes || 'No notes saved').substring(0, 100)}..."</p>
+                    {h.products_detailed && <p className="text-[11px] text-blue-600 mt-1 font-medium">Detailed: {h.products_detailed}</p>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Step indicator */}
           <div className="flex items-center justify-between px-2">
             {STEPS.map((step, i) => (
