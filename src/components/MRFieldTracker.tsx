@@ -187,13 +187,18 @@ export default function MRFieldTracker() {
         title: 'Visit Completed',
         message: `Visit to ${activeVisit?.entityName || activeVisit?.doctor_name} recorded successfully.`,
         type: 'success',
-        mrId,
+        link: '/field-tracker'
       });
       setTodayVisits(prev => prev.filter((v: any) => v.id !== activeVisit?.id));
       resetVisitState();
     } catch (error) {
       console.error('Visit submission error:', error);
-      addNotification({ title: 'Visit Submission Failed', message: 'Could not save the visit record. Please try again.', type: 'error' });
+      addNotification({ 
+        title: 'Visit Submission Failed', 
+        message: 'Could not save the visit record. Please try again or contact support.', 
+        type: 'error',
+        link: '/field-tracker'
+      });
     }
     setSubmitting(false);
   };

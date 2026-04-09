@@ -24,6 +24,8 @@ const MRFieldTracker = lazy(() => import('./components/MRFieldTracker'));
 const ApprovalWorkflow = lazy(() => import('./components/ApprovalWorkflow'));
 const EntityCredits = lazy(() => import('./components/EntityCredits'));
 const GlobalSearch = lazy(() => import('./components/GlobalSearch'));
+const AIPerformanceDashboard = lazy(() => import('./components/AIPerformanceDashboard'));
+const TopBar = lazy(() => import('./components/TopBar'));
 const VoiceAssistant = lazy(() => import('./components/VoiceAssistant'));
 const Settings = lazy(() => import('./components/Settings'));
 const Login = lazy(() => import('./components/Login'));
@@ -163,9 +165,16 @@ function AppContent() {
           <Sidebar onOpenSearch={() => setSearchOpen(true)} />
         </Suspense>
         
-        <main className="flex-1 ml-64 min-h-screen p-8">
-          <Suspense fallback={<LoadingFallback />}>
-            <Routes>
+        <main className="flex-1 ml-64 min-h-screen">
+          {/* Top Bar */}
+          <Suspense fallback={<div className="h-16 bg-white border-b border-gray-200" />}>
+            <TopBar />
+          </Suspense>
+          
+          {/* Page Content */}
+          <div className="p-8">
+            <Suspense fallback={<LoadingFallback />}>
+              <Routes>
               <Route path="/" element={<ProtectedRoute><DynamicDashboard /></ProtectedRoute>} />
               <Route path="/legacy-dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
               <Route path="/mrs" element={<ProtectedRoute requiredPermission="mrs.view"><MRManagement /></ProtectedRoute>} />
@@ -184,10 +193,12 @@ function AppContent() {
               <Route path="/field-tracker" element={<ProtectedRoute requiredPermission="field-capture.view"><MRFieldTracker /></ProtectedRoute>} />
               <Route path="/approvals" element={<ProtectedRoute requiredPermission="expenses.approve"><ApprovalWorkflow /></ProtectedRoute>} />
               <Route path="/entity-credits" element={<ProtectedRoute requiredPermission="data.view"><EntityCredits /></ProtectedRoute>} />
+              <Route path="/ai-performance" element={<ProtectedRoute requiredPermission="data.view"><AIPerformanceDashboard /></ProtectedRoute>} />
               <Route path="/unauthorized" element={<Navigate to="/" replace />} />
               <Route path="/login" element={<Navigate to="/" replace />} />
             </Routes>
           </Suspense>
+          </div>
         </main>
       </div>
 

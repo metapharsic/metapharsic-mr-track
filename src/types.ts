@@ -190,6 +190,17 @@ export interface Lead {
   assigned_mr_id?: number;
   assigned_mr_name?: string;
   created_at: string;
+  // Phase 4: AI Lead Conversion fields
+  conversion_probability?: number; // 0-100
+  expected_revenue?: number;
+  actual_revenue?: number;
+  last_contact_date?: string;
+  next_contact_date?: string | null;
+  engagement_score?: number; // 0-100
+  recommended_action?: string;
+  lead_source?: 'manual' | 'auto_detected_from_voice' | 'referral' | 'campaign';
+  converted_date?: string | null;
+  time_to_conversion_days?: number | null;
 }
 
 export interface Attendance {
@@ -209,6 +220,48 @@ export interface Attendance {
     chemist: number;
   };
   total_order_value?: number;
+}
+
+// Phase 5: AI Improvement Types
+export interface CompetitorMention {
+  id: number;
+  mr_id: number;
+  mr_name: string;
+  entity_name: string;
+  competitor_product: string;
+  mention_context: string;
+  sentiment: 'opportunity' | 'price_sensitive' | 'threat' | 'neutral';
+  visit_date: string;
+  detected_at: string;
+}
+
+export interface AIRecommendation {
+  id: number;
+  mr_id: number;
+  lead_id?: number;
+  recommendation_type: string;
+  recommendation: string;
+  made_at: string;
+  mr_action_taken?: boolean;
+  action_taken_at?: string;
+  outcome?: 'positive' | 'negative' | 'converted' | 'no_response';
+  outcome_details?: string;
+}
+
+export interface SentimentAnalysis {
+  id: number;
+  mr_id: number;
+  entity_name: string;
+  visit_date: string;
+  overall_sentiment: 'very_positive' | 'positive' | 'neutral' | 'negative' | 'very_negative';
+  sentiment_score: number; // 0-100
+  tone: string;
+  urgency_level: 'low' | 'medium' | 'high' | 'critical';
+  emotion_detected: string;
+  key_phrases: string[];
+  doctor_satisfaction: number; // 0-100
+  mr_confidence: number; // 0-100
+  analyzed_at: string;
 }
 
 export interface Activity {

@@ -34,7 +34,13 @@ Write-Host "Endpoint: GET /api/sales (as rajesh.kumar)" -ForegroundColor Gray
 $mrSales = Invoke-RestMethod -Uri "$baseUrl/sales" -Headers @{ Authorization = "Bearer rajesh.kumar@metapharsic.com" }
 Write-Host "Result: $($mrSales.Count) sales records found" -ForegroundColor Green
 if ($mrSales.Count -gt 0) {
-    Write-Host "All sales belong to MR ID 1:" $($mrSales | Where-Object { $_.mr_id -ne 1 } | Measure-Object | Select-Object -ExpandProperty Count) -ForegroundColor Gray
+    # Get the actual MR ID from the user context
+    $mrInfo = Invoke-RestMethod -Uri "$baseUrl/mrs" -Headers @{ Authorization = "Bearer rajesh.kumar@metapharsic.com" }
+    $actualMrId = $mrInfo[0].id
+    $wrongSales = $mrSales | Where-Object { $_.mr_id -ne $actualMrId } | Measure-Object | Select-Object -ExpandProperty Count
+    $validationResult = if ($wrongSales -eq 0) { 'YES' } else { 'NO' }
+    $validationColor = if ($wrongSales -eq 0) { 'Green' } else { 'Red' }
+    Write-Host "All sales belong to MR ID $actualMrId : $validationResult" -ForegroundColor $validationColor
 }
 Write-Host ""
 
@@ -51,7 +57,13 @@ Write-Host "Endpoint: GET /api/visit-schedules (as rajesh.kumar)" -ForegroundCol
 $mrSchedules = Invoke-RestMethod -Uri "$baseUrl/visit-schedules" -Headers @{ Authorization = "Bearer rajesh.kumar@metapharsic.com" }
 Write-Host "Result: $($mrSchedules.Count) schedules found" -ForegroundColor Green
 if ($mrSchedules.Count -gt 0) {
-    Write-Host "All schedules belong to MR ID 1:" $($mrSchedules | Where-Object { $_.mr_id -ne 1 } | Measure-Object | Select-Object -ExpandProperty Count) -ForegroundColor Gray
+    # Get the actual MR ID from the user context
+    $mrInfo = Invoke-RestMethod -Uri "$baseUrl/mrs" -Headers @{ Authorization = "Bearer rajesh.kumar@metapharsic.com" }
+    $actualMrId = $mrInfo[0].id
+    $wrongSchedules = $mrSchedules | Where-Object { $_.mr_id -ne $actualMrId } | Measure-Object | Select-Object -ExpandProperty Count
+    $validationResult = if ($wrongSchedules -eq 0) { 'YES' } else { 'NO' }
+    $validationColor = if ($wrongSchedules -eq 0) { 'Green' } else { 'Red' }
+    Write-Host "All schedules belong to MR ID $actualMrId : $validationResult" -ForegroundColor $validationColor
 }
 Write-Host ""
 

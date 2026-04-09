@@ -123,11 +123,13 @@ export default function MRDashboard() {
           if (!sessionStorage.getItem(seenKey) && b.schedule.length > 0) {
             sessionStorage.setItem(seenKey, '1');
             setShowBriefingModal(true);
-            // Also push a notification
-            addNotification(
-              `🌅 AI Morning Briefing ready — ${b.schedule.length} visits optimized, expected ₹${b.total_expected_value.toLocaleString('en-IN')}`,
-              'info'
-            );
+            // Also push a notification with link to Daily Call Plan
+            addNotification({
+              title: '🌅 AI Morning Briefing',
+              message: `${b.schedule.length} visits optimized, expected ₹${b.total_expected_value.toLocaleString('en-IN')}. View your optimized route.`,
+              type: 'info',
+              link: '/schedule'
+            });
           }
         } else {
           setBriefing(null);
@@ -146,7 +148,7 @@ export default function MRDashboard() {
 
   const handleCheckIn = useCallback(async () => {
     if (attendance && attendance.check_in) {
-      addNotification('Already checked in today at ' + attendance.check_in, 'info');
+      addNotification({ title: 'Already Checked In', message: `Already checked in today at ${attendance.check_in}`, type: 'info', link: '/mr-dashboard' });
       return;
     }
     setCheckingIn(true);
@@ -169,7 +171,7 @@ export default function MRDashboard() {
         minute: '2-digit',
       });
       setAttendance(result ?? { check_in: checkInTime });
-      addNotification({ message: 'Checked in successfully at ' + checkInTime, type: 'success', title: 'Attendance' });
+      addNotification({ title: 'Attendance', message: `Checked in successfully at ${checkInTime}`, type: 'success', link: '/mr-dashboard' });
     } catch (err) {
       console.error('Check-in failed:', err);
       // Fallback: record locally
@@ -178,7 +180,7 @@ export default function MRDashboard() {
         minute: '2-digit',
       });
       setAttendance({ check_in: checkInTime, mr_id: effectiveMrId });
-      addNotification('Checked in (local mode) at ' + checkInTime, 'info');
+      addNotification({ title: 'Attendance', message: `Checked in (local mode) at ${checkInTime}`, type: 'info', link: '/mr-dashboard' });
     }
     setCheckingIn(false);
   }, [attendance, effectiveMrId, user?.name, selectedMr, addNotification]);
@@ -205,7 +207,7 @@ export default function MRDashboard() {
   }, [navigate]);
 
   const handleCall = useCallback((schedule: any) => {
-    addNotification({ message: `Contact info — ${schedule.doctor_name} at ${schedule.clinic}`, type: 'info', title: 'Contact' });
+    addNotification({ title: 'Contact', message: `Contact info — ${schedule.doctor_name} at ${schedule.clinic}`, type: 'info', link: '/directory' });
   }, [addNotification]);
 
   const handleViewVisit = useCallback((visitId: number) => {

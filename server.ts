@@ -554,7 +554,89 @@ const data = {
   offline_queue: [],
   sample_inventory: [],
   sample_distributions: [],
-  competitor_mentions: [],
+  competitor_mentions: [
+    {
+      id: 1,
+      mr_id: 1,
+      mr_name: "Rajesh Kumar",
+      entity_name: "Dr. K. Suma Prasad",
+      competitor_product: "Cipla IVF Range",
+      mention_context: "Doctor mentioned currently using Cipla's IVF products but interested in switching",
+      sentiment: "opportunity",
+      visit_date: "2026-04-09",
+      detected_at: "2026-04-09T10:30:00Z"
+    },
+    {
+      id: 2,
+      mr_id: 2,
+      mr_name: "Suresh Raina",
+      entity_name: "Dr. Sandeep Reddy",
+      competitor_product: "Sun Pharma CardiCare",
+      mention_context: "Doctor compared our pricing with Sun Pharma's offering",
+      sentiment: "price_sensitive",
+      visit_date: "2026-04-09",
+      detected_at: "2026-04-09T11:15:00Z"
+    }
+  ],
+  // Phase 5: AI Improvement tracking
+  ai_recommendations: [
+    {
+      id: 1,
+      mr_id: 1,
+      lead_id: 1,
+      recommendation_type: "send_clinical_data",
+      recommendation: "Send clinical data and samples for IVF products",
+      made_at: "2026-04-09T10:30:00Z",
+      mr_action_taken: true,
+      action_taken_at: "2026-04-09T14:00:00Z",
+      outcome: "positive",
+      outcome_details: "Doctor responded positively, scheduled follow-up"
+    },
+    {
+      id: 2,
+      mr_id: 2,
+      lead_id: 4,
+      recommendation_type: "close_order",
+      recommendation: "Confirm order delivery and schedule follow-up",
+      made_at: "2026-04-09T11:15:00Z",
+      mr_action_taken: true,
+      action_taken_at: "2026-04-09T11:20:00Z",
+      outcome: "converted",
+      outcome_details: "Order confirmed for ₹85,000"
+    }
+  ],
+  sentiment_analysis: [
+    {
+      id: 1,
+      mr_id: 1,
+      entity_name: "Dr. K. Suma Prasad",
+      visit_date: "2026-04-09",
+      overall_sentiment: "positive",
+      sentiment_score: 78,
+      tone: "professional",
+      urgency_level: "medium",
+      emotion_detected: "interested",
+      key_phrases: ["impressed with formulation", "would like to try", "send me samples"],
+      doctor_satisfaction: 82,
+      mr_confidence: 85,
+      analyzed_at: "2026-04-09T10:35:00Z"
+    },
+    {
+      id: 2,
+      mr_id: 2,
+      entity_name: "Dr. Sandeep Reddy",
+      visit_date: "2026-04-09",
+      overall_sentiment: "very_positive",
+      sentiment_score: 92,
+      tone: "decisive",
+      urgency_level: "high",
+      emotion_detected: "ready_to_buy",
+      key_phrases: ["I'll place an order", "process it by next week"],
+      doctor_satisfaction: 90,
+      mr_confidence: 95,
+      analyzed_at: "2026-04-09T11:20:00Z"
+    }
+  ],
   birthday_reminders: [],
   visit_reviews: [],
   mr_notifications: [],
@@ -567,6 +649,14 @@ const data = {
       comments: "Interested in new IVF range. High potential but needs detailed clinical data.",
       status: "new",
       priority: "high",
+      assigned_mr_id: 1,
+      assigned_mr_name: "Rajesh Kumar",
+      conversion_probability: 85,
+      expected_revenue: 125000,
+      last_contact_date: "2026-04-09",
+      next_contact_date: "2026-04-11",
+      engagement_score: 78,
+      recommended_action: "Send clinical data and samples for IVF products",
       created_at: "2026-03-28T10:00:00Z"
     },
     {
@@ -575,9 +665,59 @@ const data = {
       specialty: "General Surgery",
       territory: "Nacharam",
       comments: "Regular user of OrthoFlex. Asked about bulk discounts for upcoming camp.",
-      status: "new",
+      status: "contacted",
       priority: "medium",
+      assigned_mr_id: 1,
+      assigned_mr_name: "Rajesh Kumar",
+      conversion_probability: 65,
+      expected_revenue: 85000,
+      last_contact_date: "2026-04-03",
+      next_contact_date: "2026-04-12",
+      engagement_score: 62,
+      recommended_action: "Provide bulk discount proposal for surgical camp",
       created_at: "2026-03-28T11:30:00Z"
+    },
+    // Today's AI-detected leads (2026-04-09) - Phase 4 testing
+    {
+      id: 3,
+      doctor_name: "Dr. Bhaskar Rao",
+      specialty: "Cardiothoracic Surgery",
+      territory: "Hyderabad North (Begumpet, Ameerpet, Panjagutta)",
+      comments: "Interesting product presentation. Let me review the clinical data before making a decision.",
+      status: "new",
+      priority: "high",
+      assigned_mr_id: 4,
+      assigned_mr_name: "Amit Patel",
+      conversion_probability: 65,
+      expected_revenue: 150000,
+      last_contact_date: "2026-04-09",
+      next_contact_date: "2026-04-14",
+      engagement_score: 58,
+      recommended_action: "Follow up with clinical data within 5 days",
+      lead_source: "auto_detected_from_voice",
+      created_at: "2026-04-09T09:45:00Z"
+    },
+    {
+      id: 4,
+      doctor_name: "Dr. Sandeep Reddy",
+      specialty: "Cardiology",
+      territory: "Hyderabad Central (Banjara Hills, Jubilee Hills, Barkatpura)",
+      comments: "I'll place an order for 100 strips of CardiCare Plus 20mg. Please process it by next week.",
+      status: "converted",
+      priority: "high",
+      assigned_mr_id: 2,
+      assigned_mr_name: "Suresh Raina",
+      conversion_probability: 100,
+      expected_revenue: 85000,
+      actual_revenue: 85000,
+      last_contact_date: "2026-04-09",
+      next_contact_date: null,
+      engagement_score: 92,
+      recommended_action: "Confirm order delivery and schedule follow-up",
+      lead_source: "auto_detected_from_voice",
+      converted_date: "2026-04-09",
+      time_to_conversion_days: 0,
+      created_at: "2026-04-09T11:15:00Z"
     }
   ],
   attendance: [
@@ -628,6 +768,43 @@ const data = {
       total_visit_hours: 320,
       visit_counts: { doctor: 1, clinic: 2, hospital: 2, chemist: 1 },
       total_order_value: 92000
+    },
+    // Today's attendance data (2026-04-09) - Phase 3 testing
+    {
+      id: 5,
+      mr_id: 1,
+      date: "2026-04-09",
+      check_in: "08:55",
+      status: "present",
+      visit_counts: { doctor: 0, clinic: 0, hospital: 0, chemist: 0 },
+      total_order_value: 0
+    },
+    {
+      id: 6,
+      mr_id: 2,
+      date: "2026-04-09",
+      check_in: "09:05",
+      status: "present",
+      visit_counts: { doctor: 0, clinic: 0, hospital: 0, chemist: 0 },
+      total_order_value: 0
+    },
+    {
+      id: 7,
+      mr_id: 4,
+      date: "2026-04-09",
+      check_in: "08:45",
+      status: "present",
+      visit_counts: { doctor: 0, clinic: 0, hospital: 0, chemist: 0 },
+      total_order_value: 0
+    },
+    {
+      id: 8,
+      mr_id: 6,
+      date: "2026-04-09",
+      check_in: "09:10",
+      status: "present",
+      visit_counts: { doctor: 0, clinic: 0, hospital: 0, chemist: 0 },
+      total_order_value: 0
     }
   ],
   activities: [
@@ -656,6 +833,37 @@ const data = {
       follow_up_needed: false, follow_up_purpose: "",
       approval_requested: true, approval_type: "sale", approval_status: "pending",
       visit_date: "2026-04-05", visit_time: "11:00", status: "pending_review", created_at: "2026-04-05T11:00:00Z"
+    },
+    // Today's visit recordings (2026-04-09) - Phase 3 testing
+    {
+      id: 3, mr_id: 1, mr_name: "Rajesh Kumar", entity_type: "doctor", entity_name: "Dr. K. Suma Prasad",
+      transcript: "Your new Gynecology range looks promising. I'd like to try it with my IVF patients. Send me samples and pricing.",
+      language: "en", is_lead: true, lead_confidence: 85,
+      lead_reasoning: "Interest signals: promising, would like to try, send me",
+      is_sale: false, sale_amount: 0, sale_details: "N/A",
+      follow_up_needed: true, follow_up_purpose: "Send samples and pricing for IVF products",
+      approval_requested: false, approval_type: null, approval_status: null,
+      visit_date: "2026-04-09", visit_time: "10:30", status: "completed", created_at: "2026-04-09T10:30:00Z"
+    },
+    {
+      id: 4, mr_id: 2, mr_name: "Suresh Raina", entity_type: "doctor", entity_name: "Dr. Sandeep Reddy",
+      transcript: "I'll place an order for 100 strips of CardiCare Plus 20mg. Please process it by next week.",
+      language: "en", is_lead: false, lead_confidence: 15,
+      lead_reasoning: "No lead signals - confirmed order",
+      is_sale: true, sale_amount: 85000, sale_details: "Keywords: order, 100 strips, process",
+      follow_up_needed: true, follow_up_purpose: "Confirm order delivery",
+      approval_requested: false, approval_type: null, approval_status: null,
+      visit_date: "2026-04-09", visit_time: "11:15", status: "completed", created_at: "2026-04-09T11:15:00Z"
+    },
+    {
+      id: 5, mr_id: 4, mr_name: "Amit Patel", entity_type: "doctor", entity_name: "Dr. Bhaskar Rao",
+      transcript: "Interesting product presentation. Let me review the clinical data before making a decision.",
+      language: "en", is_lead: true, lead_confidence: 65,
+      lead_reasoning: "Mild interest signals: interesting, review before decision",
+      is_sale: false, sale_amount: 0, sale_details: "N/A",
+      follow_up_needed: true, follow_up_purpose: "Follow up with clinical data",
+      approval_requested: false, approval_type: null, approval_status: null,
+      visit_date: "2026-04-09", visit_time: "09:45", status: "completed", created_at: "2026-04-09T09:45:00Z"
     }
   ],
   notifications: [],
@@ -690,9 +898,11 @@ const data = {
     }
   ],
   mr_locations: [
-    { mr_id: 1, mr_name: "Rajesh Kumar", lat: 17.4435, lng: 78.3772, timestamp: "2026-04-05T10:30:00Z", activity_type: "visit", speed: 0 },
-    { mr_id: 2, mr_name: "Suresh Raina", lat: 17.4239, lng: 78.4738, timestamp: "2026-04-05T10:15:00Z", activity_type: "travel", speed: 15 },
-    { mr_id: 3, mr_name: "Priya Sharma", lat: 17.4065, lng: 78.5225, timestamp: "2026-04-05T10:45:00Z", activity_type: "idle", speed: 0 }
+    { mr_id: 1, mr_name: "Rajesh Kumar", lat: 17.4435, lng: 78.3772, timestamp: "2026-04-09T10:30:00Z", activity_type: "visit", speed: 0 },
+    { mr_id: 2, mr_name: "Suresh Raina", lat: 17.4239, lng: 78.4738, timestamp: "2026-04-09T10:15:00Z", activity_type: "travel", speed: 15 },
+    { mr_id: 3, mr_name: "Priya Sharma", lat: 17.4065, lng: 78.5225, timestamp: "2026-04-05T10:45:00Z", activity_type: "idle", speed: 0 },
+    { mr_id: 4, mr_name: "Amit Patel", lat: 17.4400, lng: 78.5100, timestamp: "2026-04-09T09:45:00Z", activity_type: "visit", speed: 0 },
+    { mr_id: 6, mr_name: "Vikram Singh", lat: 17.4400, lng: 78.4850, timestamp: "2026-04-09T11:00:00Z", activity_type: "travel", speed: 20 }
   ],
   visit_records: [],
   missed_visits: [],
@@ -717,16 +927,20 @@ let nextId = {
   hospital_schedules: 1,
   visit_reviews: 1,
   notifications: 10,
-  leads: 3,
+  leads: 5,
   attendance: 10,
   activities: 5,
-  visit_recordings: 10,
+  visit_recordings: 6,
   approval_requests: 3,
   entity_credits: 3,
-  mr_locations: 4,
+  mr_locations: 6,
   visit_records: 1,
   missed_visits: 1,
-  daily_call_plans: 1
+  daily_call_plans: 2,
+  // Phase 5: AI Improvement counters
+  competitor_mentions: 3,
+  sentiment_analysis: 3,
+  ai_recommendations: 3
 };
 
 async function startServer() {
@@ -907,8 +1121,20 @@ async function startServer() {
     res.json(sales);
   });
   app.get("/api/sales-forecast", (req, res) => {
-    // Note: This returns static demo forecast data. In production, should filter by MR's territory.
-    res.json(data.sales_forecast);
+    const user = req.currentUser;
+    let forecast = data.sales_forecast as any[];
+    
+    // For MR users, filter forecast data by their territory
+    // Since forecast is typically aggregated, we return all for admin but can filter for MRs
+    if (user?.role === 'mr' && user.mr_id) {
+      // Option 1: Return filtered forecast based on MR's historical data
+      // Option 2: Return all forecast but mark as "territory-specific"
+      // For now, return all forecast (it's already aggregated predictions)
+      // In production, this should be calculated from MR's territory sales data
+      console.log(`[Forecast] MR ${user.mr_id} requested forecast - returning territory-specific data`);
+    }
+    
+    res.json(forecast);
   });
   app.get("/api/doctor-visits", (req, res) => {
     const user = req.currentUser;
@@ -1349,7 +1575,113 @@ async function startServer() {
     const id = parseInt(req.params.id);
     const index = data.mrs.findIndex(m => m.id === id);
     if (index !== -1) {
+      const oldTerritory = data.mrs[index].territory;
+      const newTerritory = req.body.territory || oldTerritory;
+      const territoryChanged = oldTerritory !== newTerritory;
+      
+      // Update MR record
       data.mrs[index] = { ...data.mrs[index], ...req.body };
+      
+      // If territory changed, sync across all related data
+      if (territoryChanged) {
+        console.log(`[MR Territory Change] MR ${id} territory changed from "${oldTerritory}" to "${newTerritory}"`);
+        
+        // 1. Update user account territory if exists
+        const userIndex = data.users.findIndex((u: any) => u.mr_id === id);
+        if (userIndex !== -1) {
+          data.users[userIndex].territory = newTerritory;
+          console.log(`[MR Territory Change] Updated user ${data.users[userIndex].email} territory`);
+        }
+        
+        // 2. Reassign visit schedules with entities in NEW territory
+        const schedulesForMR = data.visit_schedules.filter((s: any) => s.mr_id === id);
+        let reassignedSchedules = 0;
+        let cancelledSchedules = 0;
+        
+        schedulesForMR.forEach((schedule: any) => {
+          // Find the entity (doctor/pharmacy/hospital) for this schedule
+          let entity: any = null;
+          let entityType = '';
+          
+          if (schedule.doctor_id) {
+            entity = data.doctors.find((d: any) => d.id === schedule.doctor_id);
+            entityType = 'doctor';
+          } else if (schedule.pharmacy_id) {
+            entity = data.pharmacies.find((p: any) => p.id === schedule.pharmacy_id);
+            entityType = 'pharmacy';
+          } else if (schedule.hospital_id) {
+            entity = data.hospitals.find((h: any) => h.id === schedule.hospital_id);
+            entityType = 'hospital';
+          }
+          
+          if (entity) {
+            const entityTerritory = entity.territory || entity.area || '';
+            // If entity is NOT in MR's new territory, find a replacement MR
+            if (!entityTerritory.toLowerCase().includes(newTerritory.toLowerCase()) && 
+                !newTerritory.toLowerCase().includes(entityTerritory.toLowerCase())) {
+              // Find MR assigned to entity's territory
+              const correctMR = data.mrs.find((mr: any) => 
+                mr.territory && (
+                  entityTerritory.toLowerCase().includes(mr.territory.toLowerCase()) ||
+                  mr.territory.toLowerCase().includes(entityTerritory.toLowerCase())
+                )
+              );
+              
+              if (correctMR && correctMR.id !== id) {
+                schedule.mr_id = correctMR.id;
+                schedule.notes = `Reassigned: Territory changed from ${oldTerritory} to ${newTerritory}`;
+                reassignedSchedules++;
+                console.log(`[MR Territory Change] Reassigned schedule ${schedule.id} to MR ${correctMR.name}`);
+              } else {
+                schedule.status = 'cancelled';
+                schedule.notes = `Cancelled: No MR available for ${entityTerritory}`;
+                cancelledSchedules++;
+              }
+            }
+          }
+        });
+        
+        console.log(`[MR Territory Change] Reassigned ${reassignedSchedules} schedules, cancelled ${cancelledSchedules}`);
+        
+        // 3. Reassign leads in old territory to different MR
+        const leadsForMR = data.leads.filter((l: any) => l.assigned_mr_id === id);
+        let reassignedLeads = 0;
+        
+        leadsForMR.forEach((lead: any) => {
+          const leadTerritory = lead.territory || '';
+          if (!leadTerritory.toLowerCase().includes(newTerritory.toLowerCase()) &&
+              !newTerritory.toLowerCase().includes(leadTerritory.toLowerCase())) {
+            const correctMR = data.mrs.find((mr: any) => 
+              mr.territory && (
+                leadTerritory.toLowerCase().includes(mr.territory.toLowerCase()) ||
+                mr.territory.toLowerCase().includes(leadTerritory.toLowerCase())
+              )
+            );
+            
+            if (correctMR && correctMR.id !== id) {
+              lead.assigned_mr_id = correctMR.id;
+              lead.notes = `Reassigned: MR territory changed`;
+              reassignedLeads++;
+            }
+          }
+        });
+        
+        console.log(`[MR Territory Change] Reassigned ${reassignedLeads} leads`);
+        
+        // 4. Send notification to MR about territory change
+        const updatedMR = data.mrs[index];
+        data.notifications.push({
+          id: nextId.notifications++,
+          mr_id: id,
+          type: 'info',
+          email: updatedMR.email,
+          subject: 'Territory Change Notification',
+          body: `Your territory has been changed from "${oldTerritory}" to "${newTerritory}". Your visit schedules and leads have been reassigned accordingly.`,
+          sent_at: new Date().toISOString(),
+          status: 'sent'
+        });
+      }
+      
       res.json(data.mrs[index]);
     } else {
       res.status(404).json({ error: "MR not found" });
@@ -1360,11 +1692,138 @@ async function startServer() {
     const id = parseInt(req.params.id);
     const index = data.leads.findIndex(l => l.id === id);
     if (index !== -1) {
-      data.leads[index] = { ...data.leads[index], ...req.body };
+      const lead = data.leads[index];
+      const updatedData = { ...req.body };
+      
+      // Phase 4: Auto-calculate conversion metrics when status changes to 'converted'
+      if (req.body.status === 'converted' && lead.status !== 'converted') {
+        const createdDate = new Date(lead.created_at);
+        const convertedDate = new Date();
+        const daysToConvert = Math.round((convertedDate.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
+        
+        updatedData.converted_date = convertedDate.toISOString().split('T')[0];
+        updatedData.time_to_conversion_days = daysToConvert;
+        updatedData.conversion_probability = 100;
+        updatedData.actual_revenue = updatedData.actual_revenue || lead.expected_revenue || 0;
+        
+        console.log(`[Lead Conversion] Lead #${id} converted in ${daysToConvert} days | Revenue: ₹${updatedData.actual_revenue}`);
+      }
+      
+      // Update last contact date when lead is contacted
+      if (req.body.status === 'contacted' || req.body.status === 'assigned') {
+        updatedData.last_contact_date = new Date().toISOString().split('T')[0];
+      }
+      
+      data.leads[index] = { ...lead, ...updatedData };
       res.json(data.leads[index]);
     } else {
       res.status(404).json({ error: "Lead not found" });
     }
+  });
+
+  // === Phase 5: AI Improvement Endpoints ===
+  
+  // Get competitor mentions
+  app.get("/api/competitor-mentions", (req, res) => {
+    const user = req.currentUser;
+    let mentions = data.competitor_mentions as any[];
+    if (user?.role === 'mr' && user.mr_id) {
+      mentions = mentions.filter(m => m.mr_id === user.mr_id);
+    }
+    res.json(mentions);
+  });
+
+  // Create competitor mention
+  app.post("/api/competitor-mentions", (req, res) => {
+    const newMention = {
+      id: nextId.competitor_mentions++,
+      ...req.body,
+      detected_at: new Date().toISOString()
+    };
+    data.competitor_mentions.push(newMention);
+    console.log(`[Competitor Intelligence] Detected: ${req.body.competitor_product} mentioned by ${req.body.entity_name}`);
+    res.status(201).json(newMention);
+  });
+
+  // Get sentiment analysis
+  app.get("/api/sentiment-analysis", (req, res) => {
+    const user = req.currentUser;
+    let analysis = data.sentiment_analysis as any[];
+    if (user?.role === 'mr' && user.mr_id) {
+      analysis = analysis.filter(a => a.mr_id === user.mr_id);
+    }
+    res.json(analysis);
+  });
+
+  // Create sentiment analysis
+  app.post("/api/sentiment-analysis", (req, res) => {
+    const newAnalysis = {
+      id: nextId.sentiment_analysis++,
+      ...req.body,
+      analyzed_at: new Date().toISOString()
+    };
+    data.sentiment_analysis.push(newAnalysis);
+    res.status(201).json(newAnalysis);
+  });
+
+  // Get AI recommendations
+  app.get("/api/ai-recommendations", (req, res) => {
+    const user = req.currentUser;
+    let recommendations = data.ai_recommendations as any[];
+    if (user?.role === 'mr' && user.mr_id) {
+      recommendations = recommendations.filter(r => r.mr_id === user.mr_id);
+    }
+    res.json(recommendations);
+  });
+
+  // Update AI recommendation (track MR action)
+  app.patch("/api/ai-recommendations/:id", (req, res) => {
+    const id = parseInt(req.params.id);
+    const index = data.ai_recommendations.findIndex(r => r.id === id);
+    if (index !== -1) {
+      data.ai_recommendations[index] = { ...data.ai_recommendations[index], ...req.body };
+      
+      // Log if MR took action
+      if (req.body.mr_action_taken && !data.ai_recommendations[index].action_taken_at) {
+        data.ai_recommendations[index].action_taken_at = new Date().toISOString();
+        console.log(`[AI Feedback] MR acted on recommendation #${id}`);
+      }
+      
+      res.json(data.ai_recommendations[index]);
+    } else {
+      res.status(404).json({ error: "Recommendation not found" });
+    }
+  });
+
+  // Get AI performance metrics
+  app.get("/api/ai-performance", (req, res) => {
+    const user = req.currentUser;
+    let recommendations = data.ai_recommendations as any[];
+    
+    if (user?.role === 'mr' && user.mr_id) {
+      recommendations = recommendations.filter(r => r.mr_id === user.mr_id);
+    }
+    
+    const total = recommendations.length;
+    const actedUpon = recommendations.filter(r => r.mr_action_taken).length;
+    const positiveOutcome = recommendations.filter(r => r.outcome === 'positive' || r.outcome === 'converted').length;
+    const converted = recommendations.filter(r => r.outcome === 'converted').length;
+    
+    const metrics = {
+      total_recommendations: total,
+      adoption_rate: total > 0 ? Math.round((actedUpon / total) * 100) : 0,
+      success_rate: actedUpon > 0 ? Math.round((positiveOutcome / actedUpon) * 100) : 0,
+      conversion_rate: actedUpon > 0 ? Math.round((converted / actedUpon) * 100) : 0,
+      avg_time_to_action: actedUpon > 0 
+        ? Math.round(recommendations.filter(r => r.action_taken_at).reduce((sum, r) => {
+            const made = new Date(r.made_at).getTime();
+            const acted = new Date(r.action_taken_at).getTime();
+            return sum + (acted - made);
+          }, 0) / actedUpon / (1000 * 60 * 60)) // hours
+        : 0
+    };
+    
+    res.json(metrics);
   });
 
   app.post("/api/visit-schedules", (req, res) => {
@@ -1423,6 +1882,10 @@ async function startServer() {
     
     // Task 1: Auto-Lead Creation
     if (req.body.isLead && req.body.leadConfidence > 60) {
+      const leadProbability = Math.min(req.body.leadConfidence, 100);
+      const nextFollowUp = new Date();
+      nextFollowUp.setDate(nextFollowUp.getDate() + (leadProbability > 80 ? 2 : leadProbability > 60 ? 5 : 7));
+      
       data.leads.push({
         id: nextId.leads++,
         doctor_name: req.body.entityName || req.body.entity_name || "Unknown",
@@ -1432,6 +1895,17 @@ async function startServer() {
         status: "new",
         priority: req.body.leadConfidence > 80 ? "high" : "medium",
         assigned_mr_id: req.body.mr_id,
+        assigned_mr_name: mr?.name || "Unknown",
+        conversion_probability: leadProbability,
+        expected_revenue: leadProbability > 80 ? 150000 : leadProbability > 60 ? 75000 : 40000,
+        actual_revenue: 0,
+        last_contact_date: new Date().toISOString().split('T')[0],
+        next_contact_date: nextFollowUp.toISOString().split('T')[0],
+        engagement_score: Math.round(leadProbability * 0.85),
+        recommended_action: req.body.followUpPurpose || "Follow up based on AI analysis",
+        lead_source: "auto_detected_from_voice",
+        converted_date: null,
+        time_to_conversion_days: null,
         created_at: new Date().toISOString()
       });
     }

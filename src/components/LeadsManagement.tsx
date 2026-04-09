@@ -5,7 +5,8 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   UserPlus, MessageSquare, Calendar,
   CheckCircle2, Zap, Loader2, User, MapPin,
-  TrendingUp, FileText, Check, X, Search
+  TrendingUp, FileText, Check, X, Search,
+  Target, DollarSign, Clock, ArrowUpRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -52,6 +53,28 @@ export default function LeadsManagement() {
       setLoading(false);
     });
   }, []);
+
+  // Reload leads when user territory changes
+  useEffect(() => {
+    if (user?.role === 'mr') {
+      console.log(`[LeadsManagement] User territory changed, refreshing leads`);
+      Promise.all([
+        api.leads.getAll(),
+        api.mrs.getAll(),
+      ]).then(([l, m]: [any, any]) => {
+        let filtered = l;
+        if (user?.territory) {
+          filtered = l.filter((lead: Lead) => 
+            lead.territory === user.territory || 
+            lead.assigned_mr_id === user.mr_id || 
+            !lead.assigned_mr_id
+          );
+        }
+        setLeads(filtered);
+        setMrs(m);
+      });
+    }
+  }, [user?.territory]);
 
   const forecastLead = async (lead: Lead) => {
     const matchedMr = mrs.find(mr => mr.territory === lead.territory) || mrs[0];
@@ -278,6 +301,21 @@ export default function LeadsManagement() {
       return (priorityWeights[b.priority] || 0) - (priorityWeights[a.priority] || 0);
     });
 
+  // Phase 4: Calculate lead metrics
+  const totalLeads = leads.length;
+  const convertedLeads = leads.filter(l => l.status === 'converted');
+  const activeLeadsList = leads.filter(l => ['new', 'assigned', 'contacted'].includes(l.status));
+  const activeLeads = activeLeadsList.length;
+  const totalExpectedRevenue = leads.filter(l => l.status !== 'converted').reduce((sum, l) => sum + (l.expected_revenue || 0), 0);
+  const totalActualRevenue = convertedLeads.reduce((sum, l) => sum + (l.actual_revenue || 0), 0);
+  const avgConversionProbability = activeLeads > 0 
+    ? Math.round(activeLeadsList.reduce((sum, l) => sum + (l.conversion_probability || 0), 0) / activeLeads)
+    : 0;
+  const convertedLeadsWithDays = convertedLeads.filter(l => l.time_to_conversion_days);
+  const avgTimeToConversion = convertedLeadsWithDays.length > 0
+    ? Math.round(convertedLeadsWithDays.reduce((sum, l) => sum + (l.time_to_conversion_days || 0), 0) / convertedLeadsWithDays.length)
+    : 0;
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -341,6 +379,71 @@ export default function LeadsManagement() {
           </button>
         </div>
       </div>
+
+      {/* Phase 4: AI Lead Conversion Insights Dashboard */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
+      >
+        {/* Conversion Rate */}
+        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-5 text-white">
+          <div className="flex items-center justify-between mb-3">
+            <Target className="w-8 h-8 opacity-80" />
+            <ArrowUpRight className="w-5 h-5 opacity-60" />
+          </div>
+          <div className="text-3xl font-bold mb-1">
+            {totalLeads > 0 ? Math.round((convertedLeads.length / totalLeads) * 100) : 0}%
+          </div>
+          <div className="text-sm opacity-90">Conversion Rate</div>
+          <div className="text-xs opacity-75 mt-1">
+            {convertedLeads.length} of {totalLeads} leads
+          </div>
+        </div>
+
+        {/* Expected Revenue */}
+        <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-5 text-white">
+          <div className="flex items-center justify-between mb-3">
+            <DollarSign className="w-8 h-8 opacity-80" />
+            <TrendingUp className="w-5 h-5 opacity-60" />
+          </div>
+          <div className="text-3xl font-bold mb-1">
+            ₹{(totalExpectedRevenue / 1000).toFixed(0)}K
+          </div>
+          <div className="text-sm opacity-90">Expected Pipeline</div>
+          <div className="text-xs opacity-75 mt-1">
+            {activeLeads} active leads
+          </div>
+        </div>
+
+        {/* Avg Conversion Probability */}
+        <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-5 text-white">
+          <div className="flex items-center justify-between mb-3">
+            <Zap className="w-8 h-8 opacity-80" />
+            <ArrowUpRight className="w-5 h-5 opacity-60" />
+          </div>
+          <div className="text-3xl font-bold mb-1">{avgConversionProbability}%</div>
+          <div className="text-sm opacity-90">Avg AI Score</div>
+          <div className="text-xs opacity-75 mt-1">
+            {avgConversionProbability >= 70 ? '🔥 High Intent' : avgConversionProbability >= 50 ? '🟡 Moderate' : '⚪ Low'}
+          </div>
+        </div>
+
+        {/* Avg Time to Convert */}
+        <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl p-5 text-white">
+          <div className="flex items-center justify-between mb-3">
+            <Clock className="w-8 h-8 opacity-80" />
+            <Calendar className="w-5 h-5 opacity-60" />
+          </div>
+          <div className="text-3xl font-bold mb-1">
+            {avgTimeToConversion > 0 ? `${avgTimeToConversion}d` : 'N/A'}
+          </div>
+          <div className="text-sm opacity-90">Avg Conversion Time</div>
+          <div className="text-xs opacity-75 mt-1">
+            ₹{(totalActualRevenue / 1000).toFixed(0)}K closed
+          </div>
+        </div>
+      </motion.div>
 
       {/* Forecast All Results */}
       {batchResults.length > 0 && (
@@ -445,10 +548,24 @@ export default function LeadsManagement() {
                       <h3 className="font-semibold text-gray-900">{lead.doctor_name}</h3>
                       <span className={cn(
                         "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider",
-                        lead.status === 'assigned' ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"
+                        lead.status === 'assigned' ? "bg-green-100 text-green-700" :
+                        lead.status === 'converted' ? "bg-purple-100 text-purple-700" :
+                        lead.status === 'contacted' ? "bg-blue-100 text-blue-700" :
+                        "bg-gray-100 text-gray-700"
                       )}>
                         {lead.status}
                       </span>
+                      {/* Phase 4: AI Conversion Probability Badge */}
+                      {lead.conversion_probability && lead.status !== 'converted' && (
+                        <span className={cn(
+                          "px-2 py-0.5 rounded-full text-[10px] font-bold",
+                          lead.conversion_probability >= 80 ? "bg-red-100 text-red-700" :
+                          lead.conversion_probability >= 60 ? "bg-orange-100 text-orange-700" :
+                          "bg-blue-100 text-blue-700"
+                        )}>
+                          AI: {lead.conversion_probability}%
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-3 text-sm text-gray-500">
                       <span className="flex items-center gap-1">
@@ -467,7 +584,23 @@ export default function LeadsManagement() {
                 </div>
 
                 <div className="flex flex-col justify-between items-end gap-4 min-w-[200px]">
-                  <div className="text-right">
+                  <div className="text-right space-y-2">
+                    {/* Phase 4: Expected Revenue */}
+                    {lead.expected_revenue && lead.status !== 'converted' && (
+                      <div>
+                        <p className="text-xs text-gray-400 uppercase font-bold tracking-tighter">Expected Revenue</p>
+                        <p className="text-lg font-bold text-green-600">₹{(lead.expected_revenue / 1000).toFixed(0)}K</p>
+                      </div>
+                    )}
+                    
+                    {/* Phase 4: Recommended Action */}
+                    {lead.recommended_action && lead.status !== 'converted' && (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
+                        <p className="text-[10px] text-blue-600 font-semibold mb-1">AI Recommendation:</p>
+                        <p className="text-xs text-blue-800">{lead.recommended_action}</p>
+                      </div>
+                    )}
+                    
                     {lead.assigned_mr_name ? (
                       <div className="space-y-1">
                         <p className="text-xs text-gray-400 uppercase font-bold tracking-tighter">Assigned MR</p>
@@ -516,8 +649,23 @@ export default function LeadsManagement() {
                     </div>
                   )}
                   {lead.status === 'converted' && (
-                    <div className="flex items-center gap-2 text-green-600 font-bold bg-green-50 px-4 py-2 rounded-lg border border-green-200">
-                      <CheckCircle2 className="w-5 h-5" /> Successfully Converted
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 text-green-600 font-bold bg-green-50 px-4 py-2 rounded-lg border border-green-200">
+                        <CheckCircle2 className="w-5 h-5" /> Successfully Converted
+                      </div>
+                      {/* Phase 4: Conversion Metrics */}
+                      {lead.actual_revenue && (
+                        <div className="text-right">
+                          <p className="text-xs text-gray-500">Actual Revenue</p>
+                          <p className="text-lg font-bold text-green-600">₹{(lead.actual_revenue / 1000).toFixed(0)}K</p>
+                        </div>
+                      )}
+                      {lead.time_to_conversion_days !== null && lead.time_to_conversion_days !== undefined && (
+                        <div className="text-right">
+                          <p className="text-xs text-gray-500">Time to Convert</p>
+                          <p className="text-sm font-semibold text-gray-700">{lead.time_to_conversion_days} days</p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

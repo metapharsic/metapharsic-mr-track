@@ -51,6 +51,7 @@ export default function MRTracking() {
   const [attendances, setAttendances] = useState<Attendance[]>([]);
   const [selectedMrId, setSelectedMrId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<'map' | 'list'>('list');
 
   const fetchData = () => {
     Promise.all([
@@ -59,7 +60,14 @@ export default function MRTracking() {
       api.recordings.getAll(),
       api.visits.getSchedules(),
       api.attendance.getAll()
-    ]).then(([m, l, r, s, a]) => {
+    ]).then(([m, l, r, s, a]: [any[], any[], any[], any[], any[]]) => {
+      console.log('[MRTracking] Data loaded:', { 
+        mrs: m.length, 
+        locations: l.length, 
+        recordings: r.length, 
+        schedules: s.length, 
+        attendances: a.length 
+      });
       setMrs(m);
       setLocations(l);
       setRecordings(r);
@@ -67,26 +75,39 @@ export default function MRTracking() {
       setAttendances(a);
       if (m.length > 0 && selectedMrId === null) setSelectedMrId(m[0].id);
       setLoading(false);
+    }).catch(err => {
+      console.error('[MRTracking] Error fetching data:', err);
+      setLoading(false);
     });
   };
 
   useEffect(() => {
     fetchData();
-    // Real-time polling every 10 seconds for field tracking
-    const intervalId = setInterval(fetchData, 10000);
+    // Real-time polling every 30 seconds for admin tracking
+    const intervalId = setInterval(fetchData, 30000);
     return () => clearInterval(intervalId);
   }, []);
+
+  // Calculate summary statistics for all MRs
+  const todayDate = new Date().toISOString().split('T')[0];
+  const totalActiveMRs = mrs.filter(m => m.status === 'active').length;
+  const checkedInCount = attendances.filter(a => a.date === todayDate).length;
+  const notCheckedInMRs = mrs.filter(mr => 
+    mr.status === 'active' && !attendances.some(a => a.mr_id === mr.id && a.date === todayDate)
+  );
+  const totalVisitsToday = recordings.filter(r => r.visit_date === todayDate).length;
+  const totalLeadsDetected = recordings.filter(r => r.is_lead && r.visit_date === todayDate).length;
+  const totalSalesDetected = recordings.filter(r => r.is_sale && r.visit_date === todayDate).length;
 
   const selectedMr = mrs.find(mr => mr.id === selectedMrId);
   const selectedLocation = locations.find(l => l.mr_id === selectedMrId);
   const mrRecordings = recordings.filter(r => r.mr_id === selectedMrId);
   const mrSchedules = schedules.filter(s => s.mr_id === selectedMrId);
-  const mrVisitsToday = mrRecordings.filter(r => r.visit_date === new Date().toISOString().split('T')[0]);
+  const mrVisitsToday = mrRecordings.filter(r => r.visit_date === todayDate);
   const leadsDetected = mrRecordings.filter(r => r.is_lead);
   const salesDetected = mrRecordings.filter(r => r.is_sale);
 
   // Check alerts
-  const todayDate = new Date().toISOString().split('T')[0];
   const hasCheckedIn = attendances.some(a => a.mr_id === selectedMrId && a.date === todayDate);
   const now = new Date();
   
@@ -145,10 +166,80 @@ export default function MRTracking() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
             </span>
-            Live Updates Active
+            Live Updates (30s)
           </div>
         </div>
       </div>
+
+      {/* Summary Statistics Dashboard */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-5 text-white shadow-lg">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-blue-100 text-sm font-medium">Total Active MRs</span>
+            <User className="text-blue-200" size={20} />
+          </div>
+          <p className="text-3xl font-bold">{totalActiveMRs}</p>
+          <p className="text-blue-100 text-xs mt-1">Across all territories</p>
+        </div>
+
+        <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-5 text-white shadow-lg">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-green-100 text-sm font-medium">Checked In Today</span>
+            <CheckCircle2 className="text-green-200" size={20} />
+          </div>
+          <p className="text-3xl font-bold">{checkedInCount}</p>
+          <p className="text-green-100 text-xs mt-1">of {totalActiveMRs} MRs</p>
+        </div>
+
+        <div className="bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl p-5 text-white shadow-lg">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-amber-100 text-sm font-medium">Not Checked In</span>
+            <AlertCircle className="text-amber-200" size={20} />
+          </div>
+          <p className="text-3xl font-bold">{notCheckedInMRs.length}</p>
+          <p className="text-amber-100 text-xs mt-1">Requires attention</p>
+        </div>
+
+        <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-5 text-white shadow-lg">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-purple-100 text-sm font-medium">Visits Today</span>
+            <MapPin className="text-purple-200" size={20} />
+          </div>
+          <p className="text-3xl font-bold">{totalVisitsToday}</p>
+          <p className="text-purple-100 text-xs mt-1">Completed visits</p>
+        </div>
+
+        <div className="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl p-5 text-white shadow-lg">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-indigo-100 text-sm font-medium">Leads / Sales</span>
+            <TrendingUp className="text-indigo-200" size={20} />
+          </div>
+          <p className="text-3xl font-bold">{totalLeadsDetected} / {totalSalesDetected}</p>
+          <p className="text-indigo-100 text-xs mt-1">Detected today</p>
+        </div>
+      </div>
+
+      {/* Alerts Section */}
+      {notCheckedInMRs.length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+          <div className="flex items-start gap-3">
+            <AlertCircle className="text-red-600 mt-0.5 flex-shrink-0" size={20} />
+            <div className="flex-1">
+              <h3 className="text-red-900 font-bold mb-1">Missed Check-in Alert</h3>
+              <p className="text-red-700 text-sm mb-2">
+                {notCheckedInMRs.length} MR(s) haven't checked in yet today:
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {notCheckedInMRs.map(mr => (
+                  <span key={mr.id} className="bg-red-100 text-red-800 px-3 py-1 rounded-full text-xs font-semibold">
+                    {mr.name} ({mr.territory})
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Global Map View */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">

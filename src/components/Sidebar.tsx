@@ -22,7 +22,10 @@ import {
   Shield,
   MapPin,
   FileCheck,
-  CreditCard
+  CreditCard,
+  Brain,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useNotifications } from '../contexts/NotificationContext';
@@ -75,22 +78,73 @@ function GPSToggle({ mrId, mrName }: { mrId: number; mrName: string }) {
   );
 }
 
-const navItems = [
-  { icon: LayoutDashboard, label: 'Dashboard', path: '/', permission: 'dashboard.view' },
-  { icon: Users, label: 'MR Management', path: '/mrs', permission: 'mrs.view' },
-  { icon: Package, label: 'Product Portfolio', path: '/products', permission: 'products.view' },
-  { icon: Stethoscope, label: 'Healthcare Directory', path: '/directory', permission: 'directory.view' },
-  { icon: TrendingUp, label: 'Sales Tracking', path: '/sales', permission: 'sales.view' },
-  { icon: Receipt, label: 'Expense Manager', path: '/expenses', permission: 'expenses.view' },
-  { icon: Calendar, label: 'Daily Call Plan', path: '/schedule', permission: 'schedule.view' },
-  { icon: UserPlus, label: 'Leads Management', path: '/leads', permission: 'leads.view' },
-  { icon: LayoutGrid, label: 'MR Dashboard', path: '/mr-dashboard', permission: 'mr-dashboard.view', roles: ['mr'] },
-  { icon: MapPin, label: 'Field Visit Capture', path: '/field-tracker', permission: 'field-capture.view', roles: ['mr'] },
-  { icon: BarChart3, label: 'Performance', path: '/performance', permission: 'performance.view' },
-  { icon: MapPin, label: 'Admin Field Monitor', path: '/mr-tracking', permission: 'data.view', roles: ['admin', 'manager'] },
-  { icon: FileCheck, label: 'Approvals', path: '/approvals', permission: 'expenses.approve' },
-  { icon: CreditCard, label: 'Entity Credits', path: '/entity-credits', permission: 'data.view', roles: ['admin', 'manager'] },
-  { icon: FileText, label: 'Data Management', path: '/data-management', permission: 'data.view', roles: ['admin', 'manager'] },
+// Categorized navigation structure
+const navCategories = [
+  {
+    id: 'dashboards',
+    label: 'DASHBOARDS',
+    icon: BarChart3,
+    items: [
+      { icon: LayoutDashboard, label: 'Dashboard', path: '/', permission: 'dashboard.view' },
+      { icon: LayoutGrid, label: 'MR Dashboard', path: '/mr-dashboard', permission: 'mr-dashboard.view', roles: ['mr'] },
+      { icon: TrendingUp, label: 'Performance', path: '/performance', permission: 'performance.view' },
+      { icon: Brain, label: 'AI Performance', path: '/ai-performance', permission: 'data.view' },
+    ]
+  },
+  {
+    id: 'team',
+    label: 'TEAM MANAGEMENT',
+    icon: Users,
+    items: [
+      { icon: Users, label: 'MR Management', path: '/mrs', permission: 'mrs.view' },
+      { icon: MapPin, label: 'Admin Field Monitor', path: '/mr-tracking', permission: 'data.view', roles: ['admin', 'manager'] },
+    ]
+  },
+  {
+    id: 'healthcare',
+    label: 'HEALTHCARE NETWORK',
+    icon: Stethoscope,
+    items: [
+      { icon: Stethoscope, label: 'Healthcare Directory', path: '/directory', permission: 'directory.view' },
+      { icon: CreditCard, label: 'Entity Credits', path: '/entity-credits', permission: 'data.view', roles: ['admin', 'manager'] },
+    ]
+  },
+  {
+    id: 'sales',
+    label: 'SALES & LEADS',
+    icon: TrendingUp,
+    items: [
+      { icon: TrendingUp, label: 'Sales Tracking', path: '/sales', permission: 'sales.view' },
+      { icon: UserPlus, label: 'Leads Management', path: '/leads', permission: 'leads.view' },
+      { icon: Calendar, label: 'Daily Call Plan', path: '/schedule', permission: 'schedule.view', roles: ['mr'] },
+    ]
+  },
+  {
+    id: 'finances',
+    label: 'FINANCES',
+    icon: Receipt,
+    items: [
+      { icon: Receipt, label: 'Expense Manager', path: '/expenses', permission: 'expenses.view' },
+      { icon: FileCheck, label: 'Approvals', path: '/approvals', permission: 'expenses.approve' },
+    ]
+  },
+  {
+    id: 'field',
+    label: 'FIELD OPERATIONS',
+    icon: MapPin,
+    items: [
+      { icon: MapPin, label: 'Field Visit Capture', path: '/field-tracker', permission: 'field-capture.view', roles: ['mr'] },
+      { icon: Package, label: 'Product Portfolio', path: '/products', permission: 'products.view' },
+    ]
+  },
+  {
+    id: 'admin',
+    label: 'ADMIN',
+    icon: Shield,
+    items: [
+      { icon: FileText, label: 'Data Management', path: '/data-management', permission: 'data.view', roles: ['admin', 'manager'] },
+    ]
+  },
 ];
 
 interface SidebarProps {
@@ -101,6 +155,14 @@ export default function Sidebar({ onOpenSearch }: SidebarProps) {
   const [isMac, setIsMac] = useState(false);
   const { unreadCount, setIsPanelOpen, isPanelOpen } = useNotifications();
   const { user, logout, hasPermission } = useAuth();
+  const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
+
+  const toggleCategory = (categoryId: string) => {
+    setCollapsedCategories(prev => ({
+      ...prev,
+      [categoryId]: !prev[categoryId]
+    }));
+  };
 
   useEffect(() => {
     setIsMac(navigator.platform.toUpperCase().indexOf('MAC') >= 0);
@@ -159,50 +221,67 @@ export default function Sidebar({ onOpenSearch }: SidebarProps) {
         </button>
       </div>
       
-      <nav className="flex-1 py-4 px-4 space-y-1 overflow-y-auto">
-        {navItems
-          .filter(item => {
-            // Role restriction: if item has roles array, user must be in that list
+      {/* Categorized Navigation */}
+      <nav className="flex-1 py-2 px-3 space-y-3 overflow-y-auto">
+        {navCategories.map((category) => {
+          // Filter items based on permissions and roles
+          const visibleItems = category.items.filter(item => {
             if (item.roles && user?.role && !item.roles.includes(user.role)) return false;
-            // Permission check (admin bypasses this, but role check above handles them)
             return hasPermission(item.permission);
-          })
-          .map((item) => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              className={({ isActive }) => cn(
-                "flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 group",
-                isActive 
-                  ? "bg-blue-600 text-white shadow-lg shadow-blue-900/20" 
-                  : "text-slate-400 hover:bg-slate-800 hover:text-white"
-              )}
-            >
-              <item.icon size={20} className={cn(
-                "transition-colors",
-                "group-hover:text-blue-400"
-              )} />
-              <span className="font-medium">{item.label}</span>
-            </NavLink>
-          ))}
-      </nav>
+          });
 
-      {/* User Info */}
-      {user && (
-        <div className="px-4 py-3 border-t border-slate-800">
-          <div className="flex items-center gap-3">
-            <img 
-              src={user.avatar_url} 
-              alt={user.name}
-              className="w-8 h-8 rounded-full"
-            />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-white truncate">{user.name}</p>
-              <p className="text-xs text-slate-400 capitalize">{user.role}</p>
+          // Skip category if no visible items
+          if (visibleItems.length === 0) return null;
+
+          const isCollapsed = collapsedCategories[category.id];
+          const CategoryIcon = category.icon;
+
+          return (
+            <div key={category.id}>
+              {/* Category Header */}
+              <button
+                onClick={() => toggleCategory(category.id)}
+                className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider hover:text-slate-400 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <CategoryIcon size={14} />
+                  <span>{category.label}</span>
+                </div>
+                {isCollapsed ? (
+                  <ChevronRight size={14} />
+                ) : (
+                  <ChevronDown size={14} />
+                )}
+              </button>
+
+              {/* Category Items */}
+              <div className={cn(
+                "space-y-1 overflow-hidden transition-all duration-200",
+                isCollapsed ? "max-h-0 opacity-0" : "max-h-96 opacity-100"
+              )}>
+                {visibleItems.map((item) => (
+                  <NavLink
+                    key={item.path}
+                    to={item.path}
+                    className={({ isActive }) => cn(
+                      "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group ml-2",
+                      isActive
+                        ? "bg-blue-600 text-white shadow-lg shadow-blue-900/20"
+                        : "text-slate-400 hover:bg-slate-800 hover:text-white"
+                    )}
+                  >
+                    <item.icon size={18} className={cn(
+                      "transition-colors",
+                      "group-hover:text-blue-400"
+                    )} />
+                    <span className="font-medium text-sm">{item.label}</span>
+                  </NavLink>
+                ))}
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          );
+        })}
+      </nav>
 
       {/* GPS Tracking for MR users */}
       {user?.role === 'mr' && user?.mr_id && (
@@ -210,53 +289,6 @@ export default function Sidebar({ onOpenSearch }: SidebarProps) {
           <GPSToggle mrId={user.mr_id} mrName={user.name} />
         </div>
       )}
-
-      <div className="p-4 border-t border-slate-800 space-y-2 text-sm text-slate-400">
-        <button 
-          data-notification-trigger
-          onClick={() => setIsPanelOpen(!isPanelOpen)}
-          className="flex items-center gap-3 px-4 py-2 w-full hover:text-white transition-colors relative"
-        >
-          <Bell size={18} />
-          <span>Notifications</span>
-          {unreadCount > 0 && (
-            <span className="absolute right-4 px-2 py-0.5 bg-red-500 text-white text-xs rounded-full">
-              {unreadCount}
-            </span>
-          )}
-        </button>
-        {hasPermission('settings.view') && (
-        <NavLink
-          to="/settings"
-          className={({ isActive }) => cn(
-            "flex items-center gap-3 px-4 py-2 w-full transition-colors",
-            isActive ? "text-white bg-slate-800 rounded-lg" : "hover:text-white"
-          )}
-        >
-          <Settings size={18} />
-          <span>Settings</span>
-        </NavLink>
-        )}
-        {hasPermission('users.view') && (
-          <NavLink 
-            to="/users"
-            className={({ isActive }) => cn(
-              "flex items-center gap-3 px-4 py-2 w-full transition-colors",
-              isActive ? "text-white bg-slate-800 rounded-lg" : "hover:text-white"
-            )}
-          >
-            <Shield size={18} />
-            <span>User Management</span>
-          </NavLink>
-        )}
-        <button 
-          onClick={handleLogout}
-          className="flex items-center gap-3 px-4 py-2 w-full text-red-400 hover:text-red-300 transition-colors mt-4"
-        >
-          <LogOut size={18} />
-          <span>Logout</span>
-        </button>
-      </div>
 
       <NotificationPanel />
     </div>

@@ -77,6 +77,23 @@ export default function DailyCallPlan() {
     }).catch(() => {});
   }, [user]);
 
+  // Reload plans when user territory changes
+  useEffect(() => {
+    if (user?.role === 'mr' && user.mr_id) {
+      console.log(`[DailyCallPlan] User territory changed, refreshing plans`);
+      setLoading(true);
+      Promise.all([
+        api.dailyCallPlan.getAll(user.mr_id, selectedDate),
+        api.attendance.getAll(user.mr_id),
+      ]).then(([p, a]: [any, any]) => {
+        setPlans(p || []);
+        const todayAtt = a?.find((at: any) => at.date === selectedDate && at.mr_id === user.mr_id);
+        setAttendance(todayAtt ?? null);
+        setLoading(false);
+      }).catch(() => { setLoading(false); setPlans([]); });
+    }
+  }, [user?.territory]);
+
   // Load plans
   useEffect(() => {
     if (!effectiveMrId) return;
@@ -114,11 +131,11 @@ export default function DailyCallPlan() {
         body: JSON.stringify({ mr_id: effectiveMrId, mr_name: user?.name }),
       }).then(r => r.json());
       setAttendance(result?.record ?? result);
-      addNotification('Checked in successfully', 'success');
+      addNotification({ title: 'Attendance', message: 'Checked in successfully', type: 'success', link: '/schedule' });
     } catch {
       const t = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
       setAttendance({ check_in: t });
-      addNotification('Checked in (local) at ' + t, 'info');
+      addNotification({ title: 'Attendance', message: `Checked in (local) at ${t}`, type: 'info', link: '/schedule' });
     }
     setCheckingIn(false);
   };
@@ -135,7 +152,7 @@ export default function DailyCallPlan() {
     if (!activePlan) return;
     const sentences = visitForm.conversationSummary.split(/[.!?]+/).filter((s: string) => s.trim().length > 5);
     if (sentences.length < 3) {
-      addNotification('Conversation summary needs at least 3 sentences', 'error');
+      addNotification({ title: 'Validation Error', message: 'Conversation summary needs at least 3 sentences', type: 'error', link: '/schedule' });
       return;
     }
     setVisitStep('submitting');
@@ -157,11 +174,11 @@ export default function DailyCallPlan() {
       });
       const refreshed = await api.dailyCallPlan.getAll(effectiveMrId, selectedDate);
       setPlans(refreshed || []);
-      addNotification(`Visit to ${activePlan.entity_name} completed!`, 'success');
+      addNotification({ title: 'Visit Completed', message: `Visit to ${activePlan.entity_name} completed!`, type: 'success', link: '/schedule' });
       setShowVisitFlow(false);
       setActivePlan(null);
     } catch {
-      addNotification('Failed to complete visit', 'error');
+      addNotification({ title: 'Visit Failed', message: 'Failed to complete visit', type: 'error', link: '/schedule' });
       setVisitStep('form');
     }
   };
@@ -182,9 +199,9 @@ export default function DailyCallPlan() {
       setPlans(refreshed || []);
       setShowAddModal(false);
       setAddForm({ entityName: '', entityType: 'doctor', clinic: '', purpose: '', plannedTime: '10:00', priority: 'medium' });
-      addNotification('Unscheduled visit added', 'success');
+      addNotification({ title: 'Visit Added', message: 'Unscheduled visit added', type: 'success', link: '/schedule' });
     } catch {
-      addNotification('Failed to add visit', 'error');
+      addNotification({ title: 'Visit Add Failed', message: 'Failed to add visit', type: 'error', link: '/schedule' });
     }
   };
 
@@ -653,7 +670,7 @@ export default function DailyCallPlan() {
                       { value: 'hospital', label: 'Hospital', icon: <Building2 size={14} /> },
                     ].map(opt => (
                       <button key={opt.value} type="button"
-                        onClick={() => setAddForm(f => ({ ...f, entityType: opt.value }))}
+                        onClick={() => setAddForm(f => ({ ...f, entityType: opt.value as 'doctor' | 'chemist' | 'hospital' }))}
                         className={cn('flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-bold border transition-colors',
                           addForm.entityType === opt.value
                             ? 'bg-emerald-600 text-white border-emerald-600'
@@ -686,7 +703,7 @@ export default function DailyCallPlan() {
                     <label className="text-xs font-bold text-gray-600">Priority</label>
                     <select className="w-full mt-1 p-3 border rounded-xl text-sm"
                       value={addForm.priority}
-                      onChange={(e) => setAddForm(f => ({ ...f, priority: e.target.value }))}>
+                      onChange={(e) => setAddForm(f => ({ ...f, priority: e.target.value as 'high' | 'medium' | 'low' }))}>
                       <option value="high">High</option>
                       <option value="medium">Medium</option>
                       <option value="low">Low</option>

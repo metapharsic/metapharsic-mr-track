@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import { geminiService } from '../services/geminiService';
+import { useAuth } from '../contexts/AuthContext';
+import { useNotifications } from '../contexts/NotificationContext';
 import { MR, Visit, Sale, Attendance, Activity } from '../types';
 import { TERRITORIES } from '../constants';
 import { 
@@ -18,6 +20,8 @@ import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function MRManagement() {
+  const { updateUser, users } = useAuth();
+  const { addNotification } = useNotifications();
   const [mrs, setMrs] = useState<MR[]>([]);
   const [visitSchedules, setVisitSchedules] = useState<Visit[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
@@ -305,6 +309,10 @@ export default function MRManagement() {
     if (!selectedMr || !editForm) return;
     setSaving(true);
     try {
+      const oldTerritory = selectedMr.territory;
+      const newTerritory = editForm.territory || oldTerritory;
+      const territoryChanged = oldTerritory !== newTerritory;
+      
       // Update in localStorage
       const localMrs = loadLocalMrs();
       const localIdx = localMrs.findIndex(m => m.id === selectedMr.id);
@@ -316,9 +324,37 @@ export default function MRManagement() {
       try {
         const updated = await api.mrs.update(selectedMr.id, editForm);
         setMrs(prev => prev.map(m => m.id === updated.id ? updated : m));
+        
+        // If territory changed, update the associated user account
+        if (territoryChanged) {
+          console.log(`[MRManagement] Territory changed from "${oldTerritory}" to "${newTerritory}"`);
+          
+          // Find user linked to this MR
+          const linkedUser = users.find(u => u.mr_id === selectedMr.id);
+          if (linkedUser) {
+            await updateUser(linkedUser.id, { territory: newTerritory });
+            console.log(`[MRManagement] Updated user ${linkedUser.email} territory`);
+          }
+          
+          // Show notification about territory change impact
+          addNotification({
+            title: 'Territory Updated',
+            message: `${selectedMr.name}'s territory changed. Schedules, leads, and visits will be reassigned.`,
+            type: 'info',
+            link: '/mrs'
+          });
+        }
       } catch {
         // Server update failed, use local update
         setMrs(prev => prev.map(m => m.id === selectedMr.id ? { ...m, ...editForm as Partial<MR> } : m));
+        
+        // Still try to update user locally if territory changed
+        if (territoryChanged) {
+          const linkedUser = users.find(u => u.mr_id === selectedMr.id);
+          if (linkedUser) {
+            await updateUser(linkedUser.id, { territory: newTerritory });
+          }
+        }
       }
       setSelectedMr({ ...selectedMr, ...editForm });
       setIsEditing(false);

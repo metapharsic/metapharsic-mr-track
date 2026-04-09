@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useNotifications } from '../contexts/NotificationContext';
 import { GoogleLogin, type CredentialResponse } from '@react-oauth/google';
 import { authApi } from '../services/api';
 import { Pill, Mail, Lock, Eye, EyeOff, ArrowRight, AlertCircle } from 'lucide-react';
@@ -15,6 +16,7 @@ export default function Login() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const { login, loginWithGoogle } = useAuth();
+  const { addNotification } = useNotifications();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -23,7 +25,22 @@ export default function Login() {
     setIsLoading(true);
     const result = await login(email, password);
     if (result.success) {
-      navigate('/');
+      // Get the logged-in user
+      const saved = localStorage.getItem('metapharsic_current_user');
+      const user = saved ? JSON.parse(saved) : null;
+      
+      // Show welcome notification for MR with link to dashboard
+      if (user?.role === 'mr') {
+        addNotification({
+          title: `Welcome back, ${user.name.split(' ')[0]}! 👋`,
+          message: 'You have visits scheduled for today. Check your MR Dashboard to start your field work.',
+          type: 'success',
+          link: '/mr-dashboard'
+        });
+        navigate('/mr-dashboard');
+      } else {
+        navigate('/');
+      }
     } else {
       setError(result.error || 'Login failed');
     }
@@ -59,7 +76,15 @@ export default function Login() {
       if (result.success) {
         const saved = localStorage.getItem('metapharsic_current_user');
         const user = saved ? JSON.parse(saved) : null;
+        
+        // Show welcome notification for MR with link to dashboard
         if (user?.role === 'mr') {
+          addNotification({
+            title: `Welcome back, ${user.name.split(' ')[0]}! 👋`,
+            message: 'You have visits scheduled for today. Check your MR Dashboard to start your field work.',
+            type: 'success',
+            link: '/mr-dashboard'
+          });
           navigate('/mr-dashboard');
         } else {
           navigate('/');
@@ -78,10 +103,17 @@ export default function Login() {
     setError('Google login was cancelled or failed');
   };
 
-  const fillDemoCredentials = (type: 'admin' | 'mr') => {
-    if (type === 'admin') { setEmail('admin@metapharsic.com'); setPassword('admin123'); }
-    else { setEmail('rajesh.kumar@metapharsic.com'); setPassword('password'); }
+  const fillDemoCredentials = (email: string, password: string) => {
+    setEmail(email);
+    setPassword(password);
   };
+
+  const demoUsers = [
+    { role: 'Admin', email: 'admin@metapharsic.com', password: 'admin123', color: 'bg-purple-50 border-purple-200' },
+    { role: 'MR - Rajesh Kumar', email: 'rajesh.kumar@metapharsic.com', password: 'any', color: 'bg-blue-50 border-blue-200' },
+    { role: 'MR - Suresh Raina', email: 'suresh.raina@metapharsic.com', password: 'any', color: 'bg-blue-50 border-blue-200' },
+    { role: 'MR - Priya Sharma', email: 'priya.sharma@metapharsic.com', password: 'any', color: 'bg-blue-50 border-blue-200' },
+  ];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
@@ -157,17 +189,29 @@ export default function Login() {
           </form>
 
           <div className="mt-6 pt-6 border-t border-slate-100">
-            <p className="text-xs text-slate-500 text-center mb-3">Demo Credentials</p>
-            <div className="grid grid-cols-2 gap-3">
-              <button type="button" onClick={() => fillDemoCredentials('admin')} className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-left hover:bg-slate-100 transition-colors">
-                <p className="text-xs font-medium text-slate-600">Admin</p>
-                <p className="text-xs text-slate-400">admin@metapharsic.com</p>
-              </button>
-              <button type="button" onClick={() => fillDemoCredentials('mr')} className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-left hover:bg-slate-100 transition-colors">
-                <p className="text-xs font-medium text-slate-600">MR (Rajesh)</p>
-                <p className="text-xs text-slate-400">rajesh.kumar@metapharsic.com</p>
-              </button>
+            <p className="text-xs text-slate-500 text-center mb-3 font-semibold">👥 Demo Accounts - Click to Login</p>
+            <div className="space-y-2">
+              {demoUsers.map((user, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => fillDemoCredentials(user.email, user.password === 'any' ? 'password' : user.password)}
+                  className={`w-full p-3 ${user.color} border rounded-lg text-left hover:opacity-80 transition-all`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-700">{user.role}</p>
+                      <p className="text-xs text-slate-500">{user.email}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-slate-400">Password:</p>
+                      <p className="text-xs font-mono font-semibold text-slate-600">{user.password}</p>
+                    </div>
+                  </div>
+                </button>
+              ))}
             </div>
+            <p className="text-[10px] text-slate-400 text-center mt-3">ℹ️ MR accounts accept any password</p>
           </div>
         </div>
 

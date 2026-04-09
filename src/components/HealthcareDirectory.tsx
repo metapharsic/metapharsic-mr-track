@@ -61,6 +61,14 @@ export default function HealthcareDirectory() {
     }
   }, [user]);
 
+  // Refresh data when user territory changes (e.g., after admin updates MR territory)
+  useEffect(() => {
+    if (user?.role === 'mr' && user.territory) {
+      console.log(`[HealthcareDirectory] User territory changed to: ${user.territory}, refreshing data`);
+      fetchAllData();
+    }
+  }, [user?.territory]);
+
   const resetAddForm = () => { setFormData({}); setFormErrors({}); setIsSubmitting(false); };
 
   const openAddFor = (et: 'doctor' | 'pharmacy' | 'hospital') => {
