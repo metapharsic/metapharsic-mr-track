@@ -1,11 +1,11 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Upload, Download, BarChart3, FileText, Zap,
   Users, Package, Stethoscope, TrendingUp,
   Loader2, CheckCircle, AlertCircle, ExternalLink,
   Search, Database, ShieldCheck, ArrowRight,
-  FileDown, Calendar
+  FileDown, Calendar, ClipboardList, Brain, UserCheck
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { classifyMixedData, getClassificationSummary } from '../lib/dataClassifier';
@@ -32,18 +32,121 @@ export default function DataManagement() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [dataStats, setDataStats] = useState<DataStats | null>(null);
   const [dataQuality, setDataQuality] = useState<DataQuality | null>(null);
-  const [activeTab, setActiveTab] = useState<'upload' | 'download' | 'analytics' | 'quality' | 'powerbi'>('upload');
+  const [activeTab, setActiveTab] = useState<'upload' | 'download' | 'analytics' | 'quality' | 'powerbi' | 'pending'>('upload');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [classificationPreview, setClassificationPreview] = useState<any>(null);
   const [isClassifying, setIsClassifying] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [downloadType, setDownloadType] = useState<'all' | 'doctors' | 'pharmacies' | 'hospitals' | 'mrs'>('all');
   const [isDragOver, setIsDragOver] = useState(false);
+  
+  // NEW: Pending entities state
+  const [pendingEntities, setPendingEntities] = useState<any[]>([]);
+  const [pendingStats, setPendingStats] = useState<any>(null);
+  const [isAssigning, setIsAssigning] = useState(false);
+  const [selectedEntity, setSelectedEntity] = useState<any>(null);
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [mrs, setMrs] = useState<any[]>([]);
 
   React.useEffect(() => {
     fetchDataStats();
     fetchDataQuality();
+    fetchPendingEntities();
+    fetchMRs();
   }, []);
+  
+  const fetchPendingEntities = async () => {
+    try {
+      const [entitiesRes, statsRes] = await Promise.all([
+        fetch('/api/pending-entities'),
+        fetch('/api/pending-entities/stats')
+      ]);
+      
+      if (entitiesRes.ok) {
+        const entities = await entitiesRes.json();
+        setPendingEntities(entities);
+      }
+      
+      if (statsRes.ok) {
+        const stats = await statsRes.json();
+        setPendingStats(stats);
+      }
+    } catch (error) {
+      console.error('Failed to fetch pending entities:', error);
+    }
+  };
+  
+  const fetchMRs = async () => {
+    try {
+      const response = await fetch('/api/mrs');
+      if (response.ok) {
+        const data = await response.json();
+        setMrs(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch MRs:', error);
+    }
+  };
+  
+  const handleAIAssign = async (optimization = 'balanced') => {
+    setIsAssigning(true);
+    setMessage(null);
+    
+    try {
+      const response = await fetch('/api/pending-entities/bulk-assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ optimization })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        setMessage({
+          type: 'success',
+          text: `AI assigned ${result.assignments?.length || 0} entities to ${new Set(result.assignments?.map((a: any) => a.assigned_mr_id)).size} MRs`
+        });
+        fetchPendingEntities();
+      } else {
+        const error = await response.json();
+        setMessage({ type: 'error', text: `Assignment failed: ${error.message}` });
+      }
+    } catch (error: any) {
+      setMessage({ type: 'error', text: `Assignment error: ${error.message}` });
+    } finally {
+      setIsAssigning(false);
+    }
+  };
+  
+  const handleManualAssign = async (entityId: number, mrId: number) => {
+    setIsAssigning(true);
+    setMessage(null);
+    
+    try {
+      const response = await fetch(`/api/pending-entities/${entityId}/assign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mr_id: mrId })
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        setMessage({
+          type: 'success',
+          text: `Entity assigned to ${result.entity?.assigned_mr_id ? 'MR' : 'MR'} successfully`
+        });
+        setShowAssignModal(false);
+        setSelectedEntity(null);
+        fetchPendingEntities();
+      } else {
+        const error = await response.json();
+        setMessage({ type: 'error', text: `Assignment failed: ${error.message}` });
+      }
+    } catch (error: any) {
+      setMessage({ type: 'error', text: `Assignment error: ${error.message}` });
+    } finally {
+      setIsAssigning(false);
+    }
+  };
 
   const fetchDataStats = async () => {
     try {
@@ -124,26 +227,33 @@ export default function DataManagement() {
     setMessage(null);
 
     try {
+      // Send with autoAssign flag to also add directly to healthcare directory
+      const uploadPayload = {
+        ...classificationPreview.data,
+        autoAssign: true  // This ensures data goes to both pending queue AND active directory
+      };
+      
       const response = await fetch('/api/upload-data', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(classificationPreview.data),
+        body: JSON.stringify(uploadPayload),
       });
 
       if (response.ok) {
-        let result = { totalAdded: 0 };
+        let result = { totalAdded: 0, pendingCount: 0 };
         const text = await response.text();
         if (text) {
           try { result = JSON.parse(text); } catch { /* skip */ }
         }
         setMessage({
           type: 'success',
-          text: `Data uploaded successfully! Added ${result.totalAdded} records to healthcare directory.`
+          text: `Data uploaded successfully! Added ${result.totalAdded} records to healthcare directory. ${result.pendingCount || 0} entities also queued for AI assignment.`
         });
         setClassificationPreview(null);
         setSelectedFile(null);
         fetchDataStats();
         fetchDataQuality();
+        fetchPendingEntities();
         window.dispatchEvent(new CustomEvent('healthcare-data-updated', { detail: result }));
       } else {
         const text = await response.text();
@@ -299,14 +409,15 @@ export default function DataManagement() {
           {[
             { key: 'upload' as const, icon: Upload, label: 'Upload' },
             { key: 'download' as const, icon: Download, label: 'Download' },
+            { key: 'pending' as const, icon: ClipboardList, label: 'Pending', badge: pendingStats?.pending },
             { key: 'analytics' as const, icon: BarChart3, label: 'Analytics' },
             { key: 'quality' as const, icon: ShieldCheck, label: 'Data Quality' },
             { key: 'powerbi' as const, icon: FileText, label: 'Power BI' },
-          ].map(({ key, icon: Icon, label }) => (
+          ].map(({ key, icon: Icon, label, badge }) => (
             <button
               key={key}
               onClick={() => setActiveTab(key)}
-              className={`flex-1 px-4 py-2.5 text-sm font-semibold flex items-center justify-center gap-2 rounded-lg transition-colors ${
+              className={`flex-1 px-4 py-2.5 text-sm font-semibold flex items-center justify-center gap-2 rounded-lg transition-colors relative ${
                 activeTab === key
                   ? 'bg-blue-600 text-white shadow-sm'
                   : 'text-slate-600 hover:bg-slate-50'
@@ -314,6 +425,11 @@ export default function DataManagement() {
             >
               <Icon size={16} />
               <span className="hidden sm:inline">{label}</span>
+              {badge && badge > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+                  {badge > 9 ? '9+' : badge}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -487,6 +603,109 @@ export default function DataManagement() {
                   {isLoading ? 'Generating...' : `Download ${downloadType}`}
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* Pending Assignments Tab */}
+          {activeTab === 'pending' && (
+            <div>
+              <div className="mb-6 flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 mb-1">Pending Assignments</h2>
+                  <p className="text-slate-500 text-sm">AI-powered assignment of uploaded entities to MRs</p>
+                </div>
+                <button
+                  onClick={() => handleAIAssign('balanced')}
+                  disabled={isAssigning || pendingEntities.filter(e => e.status === 'pending').length === 0}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 disabled:opacity-50 inline-flex items-center gap-2"
+                >
+                  {isAssigning ? <Loader2 size={18} className="animate-spin" /> : <Brain size={18} />}
+                  {isAssigning ? 'Assigning...' : 'Auto-Assign with AI'}
+                </button>
+              </div>
+
+              {pendingStats && (
+                <div className="grid grid-cols-4 gap-4 mb-6">
+                  <div className="bg-amber-50 p-4 rounded-xl border border-amber-200">
+                    <p className="text-xs text-amber-600 uppercase font-semibold">Pending</p>
+                    <p className="text-2xl font-bold text-amber-700">{pendingStats.pending}</p>
+                  </div>
+                  <div className="bg-green-50 p-4 rounded-xl border border-green-200">
+                    <p className="text-xs text-green-600 uppercase font-semibold">Assigned</p>
+                    <p className="text-2xl font-bold text-green-700">{pendingStats.assigned}</p>
+                  </div>
+                  <div className="bg-blue-50 p-4 rounded-xl border border-blue-200">
+                    <p className="text-xs text-blue-600 uppercase font-semibold">Doctors</p>
+                    <p className="text-2xl font-bold text-blue-700">{pendingStats.by_type?.doctors || 0}</p>
+                  </div>
+                  <div className="bg-purple-50 p-4 rounded-xl border border-purple-200">
+                    <p className="text-xs text-purple-600 uppercase font-semibold">Pharmacies</p>
+                    <p className="text-2xl font-bold text-purple-700">{pendingStats.by_type?.pharmacies || 0}</p>
+                  </div>
+                </div>
+              )}
+
+              {pendingEntities.filter(e => e.status === 'pending').length === 0 ? (
+                <div className="bg-slate-50 rounded-xl p-8 text-center border border-slate-200">
+                  <ClipboardList size={48} className="mx-auto text-slate-400 mb-3" />
+                  <p className="text-lg font-semibold text-slate-700 mb-1">No Pending Entities</p>
+                  <p className="text-slate-500 text-sm">Upload Excel files to add entities to the pending queue</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">Entity</th>
+                        <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">Type</th>
+                        <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">Territory</th>
+                        <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">Tier</th>
+                        <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">Upload Date</th>
+                        <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {pendingEntities.filter(e => e.status === 'pending').map((entity) => (
+                        <tr key={entity.id} className="hover:bg-slate-50 transition-colors">
+                          <td className="py-3 px-4">
+                            <p className="font-medium text-slate-900">{entity.entity_data?.name || 'N/A'}</p>
+                            <p className="text-xs text-slate-500">{entity.entity_data?.clinic || entity.entity_data?.specialty || ''}</p>
+                          </td>
+                          <td className="py-3 px-4">
+                            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium capitalize">
+                              {entity.entity_type}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-sm text-slate-700">{entity.territory || 'N/A'}</td>
+                          <td className="py-3 px-4">
+                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                              entity.tier === 'A' ? 'bg-green-100 text-green-700' :
+                              entity.tier === 'B' ? 'bg-yellow-100 text-yellow-700' :
+                              'bg-red-100 text-red-700'
+                            }`}>
+                              {entity.tier}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-sm text-slate-600">
+                            {new Date(entity.upload_date).toLocaleDateString()}
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => { setSelectedEntity(entity); setShowAssignModal(true); }}
+                                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 inline-flex items-center gap-1"
+                              >
+                                <UserCheck size={14} />
+                                Assign
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 
@@ -664,6 +883,57 @@ export default function DataManagement() {
             </div>
           )}
         </div>
+
+        {/* Manual Assignment Modal */}
+        {showAssignModal && selectedEntity && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowAssignModal(false)}>
+            <div className="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-lg font-bold text-slate-900 mb-4">Assign Entity to MR</h3>
+              
+              <div className="bg-slate-50 p-4 rounded-lg mb-4">
+                <p className="font-semibold text-slate-800">{selectedEntity.entity_data?.name}</p>
+                <p className="text-sm text-slate-600">{selectedEntity.entity_data?.clinic || selectedEntity.entity_data?.specialty}</p>
+                <p className="text-xs text-slate-500 mt-2">Territory: {selectedEntity.territory} | Tier: {selectedEntity.tier}</p>
+              </div>
+
+              <label className="block text-sm font-semibold text-slate-700 mb-2">Select MR</label>
+              <select
+                className="w-full px-3 py-2.5 border border-slate-300 rounded-lg mb-4 focus:ring-2 focus:ring-blue-500"
+                onChange={(e) => {
+                  const mrId = parseInt(e.target.value);
+                  if (mrId) handleManualAssign(selectedEntity.id, mrId);
+                }}
+                defaultValue=""
+              >
+                <option value="" disabled>Choose an MR...</option>
+                {mrs
+                  .filter(mr => mr.territory && selectedEntity.territory && 
+                    (mr.territory.toLowerCase().includes(selectedEntity.territory.toLowerCase()) ||
+                     selectedEntity.territory.toLowerCase().includes(mr.territory.toLowerCase())))
+                  .map(mr => (
+                    <option key={mr.id} value={mr.id}>
+                      {mr.name} - {mr.territory.split('(')[0].trim()} (Score: {mr.performance_score})
+                    </option>
+                  ))}
+                {mrs.filter(mr => mr.territory && selectedEntity.territory && 
+                    (mr.territory.toLowerCase().includes(selectedEntity.territory.toLowerCase()) ||
+                     selectedEntity.territory.toLowerCase().includes(mr.territory.toLowerCase()))).length === 0 && (
+                  <option disabled>No matching MRs in this territory</option>
+                )}
+              </select>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowAssignModal(false)}
+                  className="flex-1 px-4 py-2.5 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium"
+                  disabled={isAssigning}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

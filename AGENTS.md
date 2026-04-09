@@ -1,8 +1,8 @@
 # Metapharsic Life Sciences CRM - Agent Architecture
 
-**Version**: 1.0  
-**Last Updated**: 2025-04-08  
-**Architecture**: Multi-Agent System with API-First Design
+**Version**: 2.0  
+**Last Updated**: 2026-04-09  
+**Architecture**: Multi-Agent System with API-First Design + AI-Powered Data Management
 
 This document describes the key "agents" (modules/components) that make up the MR Life Science CRM system. Each agent has specific responsibilities and communicates through well-defined interfaces.
 
@@ -698,6 +698,99 @@ locationService.stopTracking()
 - `general_enquiry`
 
 **Algorithm**: Keyword-based rule engine (no ML dependency)
+
+---
+
+#### **25. Data Management (`src/components/DataManagement.tsx`)**
+**Role**: Upload, download, analyze, and AI-assign healthcare provider data.
+
+**Features**:
+- Excel file upload with auto-classification
+- Data download (all or by entity type)
+- Data quality analysis
+- **NEW**: Pending assignments queue for AI-powered MR assignment
+
+**AI Assignment System**:
+1. **Upload** → Excel data classified and saved to pending queue
+2. **Review** → View pending entities in "Pending Assignments" tab
+3. **Assign** → Two modes:
+   - **Auto-Assign with AI**: Bulk assigns all pending entities based on territory, workload, performance
+   - **Manual Assign**: Select specific MR for individual entity
+4. **Auto-Schedule** → Creates visit schedules based on entity tier (A=3x/week, B=2x/week, C=1x/week)
+
+**Dependencies**:
+- `api.pendingEntities` (GET, POST, bulk-assign)
+- `api.mrs` (for assignment targets)
+- Data classifier for Excel parsing
+
+**Data Model**:
+```typescript
+PendingEntity {
+  id: number,
+  entity_type: 'doctor' | 'pharmacy' | 'hospital',
+  entity_data: object,          // Full entity details
+  territory: string,
+  tier: string,
+  source: 'excel_upload',
+  upload_date: string,
+  uploaded_by: string,
+  status: 'pending' | 'assigned' | 'rejected',
+  assigned_mr_id: number | null,
+  assigned_date: string | null,
+  ai_confidence: number | null
+}
+```
+
+**Backend Endpoints**:
+```
+GET    /api/pending-entities             - List pending entities
+GET    /api/pending-entities/stats       - Statistics
+POST   /api/pending-entities/:id/assign  - Manual assign to MR
+POST   /api/pending-entities/bulk-assign - AI bulk assignment
+POST   /api/ai/generate-monthly-plan     - Generate monthly visit plan
+POST   /api/ai/reassign-monthly-plan     - Dynamic re-assignment
+GET    /api/notifications                - Get user notifications
+POST   /api/notifications                - Create notification
+POST   /api/notifications/:id/read       - Mark as read
+```
+
+**AI Assignment Algorithm**:
+- Groups entities by territory
+- Matches to MRs with territory overlap
+- Optimization strategies:
+  - `balanced`: Round-robin distribution
+  - `performance`: Prioritize high-performing MRs
+  - `workload`: Assign to MRs with fewer scheduled visits
+- Creates tier-based visit schedules automatically
+- Returns assignment confidence scores (85-100%)
+
+---
+
+#### **26. Notification System (Phase 4)**
+**Role**: Intelligent scheduled notifications for MRs.
+
+**Notification Types**:
+- `schedule_assignment` - Next day's visit schedule (7 PM)
+- `reminder` - Morning visit reminder (8 AM)
+- `schedule_change` - AI reassignment notification
+- `performance_alert` - Weekly performance summary (Monday 9 AM)
+- `monthly_plan` - New monthly plan ready
+
+**Scheduler**:
+- Runs every 60 seconds (`setInterval`)
+- Checks current time and creates appropriate notifications
+- Prevents duplicate notifications per day
+- Role-based filtering (MRs see only their notifications)
+
+**Dependencies**:
+- `data.notifications` store
+- `data.visit_schedules` for schedule data
+- Background scheduler in `server.ts`
+
+**Auto-Created Notifications**:
+1. **7 PM**: Tomorrow's schedule summary
+2. **8 AM**: Morning reminder with visit count
+3. **Monday 9 AM**: Weekly performance recap
 
 ---
 

@@ -3,9 +3,46 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import { promises as fs } from "fs";
+import dotenv from "dotenv";
+
+// Load environment variables
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Database configuration
+const USE_DATABASE = process.env.DATABASE_URL && process.env.DATABASE_URL.length > 0;
+let db: any = null;
+
+if (USE_DATABASE) {
+  console.log('🔌 DATABASE_URL detected, initializing PostgreSQL...');
+  try {
+    import('./src/database/db').then((dbModule) => {
+      db = dbModule;
+      console.log('✅ PostgreSQL database module loaded');
+      
+      // Test connection
+      db.testConnection().then((connected: boolean) => {
+        if (connected) {
+          console.log('✅ PostgreSQL connection successful');
+          console.log('💾 All data will be persisted to database');
+        } else {
+          console.log('⚠️  PostgreSQL connection failed, falling back to in-memory storage');
+        }
+      });
+    }).catch((error) => {
+      console.error('❌ Failed to load database module:', error);
+      console.log('⚠️  Using in-memory storage as fallback');
+    });
+  } catch (error) {
+    console.error('❌ Database initialization error:', error);
+    console.log('⚠️  Using in-memory storage as fallback');
+  }
+} else {
+  console.log('💾 No DATABASE_URL configured, using in-memory storage');
+  console.log('💡 To enable PostgreSQL, add DATABASE_URL to your .env file');
+}
 
 // Extend Express Request type to include currentUser
 declare global {
@@ -907,7 +944,9 @@ const data = {
   visit_records: [],
   missed_visits: [],
   daily_summaries: [],
-  daily_call_plans: []
+  daily_call_plans: [],
+  // NEW: Pending entities from Excel uploads awaiting AI assignment
+  pending_entities: []
 };
 
 let nextId = {
@@ -937,6 +976,7 @@ let nextId = {
   visit_records: 1,
   missed_visits: 1,
   daily_call_plans: 2,
+  pending_entities: 1,
   // Phase 5: AI Improvement counters
   competitor_mentions: 3,
   sentiment_analysis: 3,
@@ -2423,124 +2463,203 @@ async function startServer() {
 
       const uploadData = req.body;
       let totalAdded = 0;
+      let pendingCount = 0;
+      const autoAssign = req.body.autoAssign === true; // Flag for immediate AI assignment
 
-      // Process Doctors
+      // Helper function to add to pending entities
+      const addToPending = (entityType: string, entityData: any, territory: string, tier: string) => {
+        const pendingEntity = {
+          id: nextId.pending_entities++,
+          entity_type: entityType,
+          entity_data: entityData,
+          territory: territory || '',
+          tier: tier || 'B',
+          source: 'excel_upload',
+          upload_date: new Date().toISOString(),
+          uploaded_by: req.currentUser?.email || 'admin',
+          status: 'pending' as const,
+          assigned_mr_id: null,
+          assigned_date: null,
+          ai_confidence: null
+        };
+        (data.pending_entities as any).push(pendingEntity);
+        pendingCount++;
+        return pendingEntity;
+      };
+
+      // Process Doctors - Add to pending first
       if (uploadData.doctors && Array.isArray(uploadData.doctors)) {
         uploadData.doctors.forEach((doctor: any) => {
           try {
-            const newDoctor: any = {
-              id: nextId.doctors++,
-              name: doctor.name || doctor.Name || "",
-              clinic: doctor.clinic || doctor.Clinic || "",
-              specialty: doctor.specialty || doctor.Specialty || "",
-              territory: doctor.territory || doctor.Territory || "",
-              tier: String(doctor.tier || doctor.Tier || "B"),
-              potential: "medium",
+            const territory = doctor.territory || doctor.Territory || '';
+            const tier = String(doctor.tier || doctor.Tier || 'B');
+            
+            // Add to pending entities
+            addToPending('doctor', {
+              name: doctor.name || doctor.Name || '',
+              clinic: doctor.clinic || doctor.Clinic || '',
+              specialty: doctor.specialty || doctor.Specialty || '',
+              phone: doctor.contact || doctor.Contact || '',
+              email: doctor.email || doctor.Email || '',
+              address: doctor.address || doctor.Address || '',
               total_visits: parseInt(doctor.total_visits) || 0,
               total_orders: parseInt(doctor.total_orders) || 0,
-              total_value: parseInt(doctor.total_value) || 0,
-              status: "active",
-              phone: doctor.contact || doctor.Contact || "",
-              email: doctor.email || doctor.Email || "",
-              address: "",
-              visit_frequency: 14,
-              preferred_products: [],
-              last_visit: new Date().toISOString().split('T')[0],
-              area: "",
-              entity_type: "Doctor",
-              rating: Math.random() * 5
-            };
-            (data.doctors as any).push(newDoctor);
-            totalAdded++;
+              total_value: parseInt(doctor.total_value) || 0
+            }, territory, tier);
+
+            // If autoAssign is true, also add directly to active doctors
+            if (autoAssign) {
+              const newDoctor: any = {
+                id: nextId.doctors++,
+                name: doctor.name || doctor.Name || '',
+                clinic: doctor.clinic || doctor.Clinic || '',
+                specialty: doctor.specialty || doctor.Specialty || '',
+                territory: territory,
+                tier: tier,
+                potential: 'medium',
+                total_visits: parseInt(doctor.total_visits) || 0,
+                total_orders: parseInt(doctor.total_orders) || 0,
+                total_value: parseInt(doctor.total_value) || 0,
+                status: 'active',
+                phone: doctor.contact || doctor.Contact || '',
+                email: doctor.email || doctor.Email || '',
+                address: '',
+                visit_frequency: 14,
+                preferred_products: [],
+                last_visit: new Date().toISOString().split('T')[0],
+                area: '',
+                entity_type: 'Doctor',
+                rating: Math.random() * 5
+              };
+              (data.doctors as any).push(newDoctor);
+              totalAdded++;
+            }
           } catch (e) {
             console.error('Error processing doctor:', e);
           }
         });
       }
 
-      // Process Pharmacies
+      // Process Pharmacies - Add to pending first
       if (uploadData.pharmacies && Array.isArray(uploadData.pharmacies)) {
         uploadData.pharmacies.forEach((pharmacy: any) => {
           try {
-            const newPharmacy: any = {
-              id: nextId.pharmacies++,
-              name: pharmacy.name || pharmacy.Name || "",
-              owner_name: pharmacy.owner || pharmacy.Owner || "",
-              phone: pharmacy.contact || pharmacy.Contact || "",
-              email: pharmacy.email || pharmacy.Email || "",
-              address: pharmacy.address || pharmacy.Address || "",
-              territory: pharmacy.city || pharmacy.City || "",
-              tier: String(pharmacy.tier || pharmacy.Tier || "B"),
-              credit_limit: 100000,
+            const territory = pharmacy.city || pharmacy.City || '';
+            const tier = String(pharmacy.tier || pharmacy.Tier || 'B');
+            
+            // Add to pending entities
+            addToPending('pharmacy', {
+              name: pharmacy.name || pharmacy.Name || '',
+              owner_name: pharmacy.owner || pharmacy.Owner || '',
+              phone: pharmacy.contact || pharmacy.Contact || '',
+              email: pharmacy.email || pharmacy.Email || '',
+              address: pharmacy.address || pharmacy.Address || '',
+              business_type: pharmacy.type || pharmacy.Type || 'Medical Hall',
               credit_days: 30,
-              total_purchases: parseInt(pharmacy.total_purchases) || 0,
-              avg_monthly_purchase: 0,
-              payment_history: "Good",
-              last_purchase_date: new Date().toISOString().split('T')[0],
-              contact_person: "",
-              business_type: pharmacy.type || pharmacy.Type || "Medical Hall",
-              gst_number: "",
-              discount_notes: ""
-            };
-            (data.pharmacies as any).push(newPharmacy);
-            totalAdded++;
+              total_purchases: parseInt(pharmacy.total_purchases) || 0
+            }, territory, tier);
+
+            // If autoAssign is true, also add directly to active pharmacies
+            if (autoAssign) {
+              const newPharmacy: any = {
+                id: nextId.pharmacies++,
+                name: pharmacy.name || pharmacy.Name || '',
+                owner_name: pharmacy.owner || pharmacy.Owner || '',
+                phone: pharmacy.contact || pharmacy.Contact || '',
+                email: pharmacy.email || pharmacy.Email || '',
+                address: pharmacy.address || pharmacy.Address || '',
+                territory: territory,
+                tier: tier,
+                credit_limit: 100000,
+                credit_days: 30,
+                total_purchases: parseInt(pharmacy.total_purchases) || 0,
+                avg_monthly_purchase: 0,
+                payment_history: 'Good',
+                last_purchase_date: new Date().toISOString().split('T')[0],
+                contact_person: '',
+                business_type: pharmacy.type || pharmacy.Type || 'Medical Hall',
+                gst_number: '',
+                discount_notes: ''
+              };
+              (data.pharmacies as any).push(newPharmacy);
+              totalAdded++;
+            }
           } catch (e) {
             console.error('Error processing pharmacy:', e);
           }
         });
       }
 
-      // Process Hospitals
+      // Process Hospitals - Add to pending first
       if (uploadData.hospitals && Array.isArray(uploadData.hospitals)) {
         uploadData.hospitals.forEach((hospital: any) => {
           try {
-            const newHospital: any = {
-              id: nextId.hospitals++,
-              name: hospital.name || hospital.Name || "",
-              type: hospital.type || hospital.Type || "Private",
-              contact_person: "",
-              phone: hospital.contact || hospital.Contact || "",
-              email: hospital.email || hospital.Email || "",
-              address: hospital.address || hospital.Address || "",
-              territory: hospital.city || hospital.City || "",
-              tier: String(hospital.tier || hospital.Tier || "B"),
+            const territory = hospital.city || hospital.City || '';
+            const tier = String(hospital.tier || hospital.Tier || 'B');
+            
+            // Add to pending entities
+            addToPending('hospital', {
+              name: hospital.name || hospital.Name || '',
+              type: hospital.type || hospital.Type || 'Private',
+              contact_person: '',
+              phone: hospital.contact || hospital.Contact || '',
+              email: hospital.email || hospital.Email || '',
+              address: hospital.address || hospital.Address || '',
               bed_count: parseInt(hospital.beds || hospital.Beds) || 100,
-              credit_limit: 500000,
               credit_days: 45,
-              key_departments: ["General", "Orthopedics", "Pediatrics"],
-              total_purchases: parseInt(hospital.total_purchases) || 0,
-              status: "active",
-              billing_contact: "",
-              medical_director: "",
-              notes: ""
-            };
-            (data.hospitals as any).push(newHospital);
-            totalAdded++;
+              total_purchases: parseInt(hospital.total_purchases) || 0
+            }, territory, tier);
+
+            // If autoAssign is true, also add directly to active hospitals
+            if (autoAssign) {
+              const newHospital: any = {
+                id: nextId.hospitals++,
+                name: hospital.name || hospital.Name || '',
+                type: hospital.type || hospital.Type || 'Private',
+                contact_person: '',
+                phone: hospital.contact || hospital.Contact || '',
+                email: hospital.email || hospital.Email || '',
+                address: hospital.address || hospital.Address || '',
+                territory: territory,
+                tier: tier,
+                bed_count: parseInt(hospital.beds || hospital.Beds) || 100,
+                credit_limit: 500000,
+                credit_days: 45,
+                key_departments: ['General', 'Orthopedics', 'Pediatrics'],
+                total_purchases: parseInt(hospital.total_purchases) || 0,
+                status: 'active',
+                billing_contact: '',
+                medical_director: '',
+                notes: ''
+              };
+              (data.hospitals as any).push(newHospital);
+              totalAdded++;
+            }
           } catch (e) {
             console.error('Error processing hospital:', e);
           }
         });
       }
 
-      // Process MRs
+      // Process MRs (MRs are added directly, not to pending)
       if (uploadData.mrs && Array.isArray(uploadData.mrs)) {
         uploadData.mrs.forEach((mr: any) => {
           try {
             const newMR: any = {
               id: nextId.mrs++,
-              name: mr.name || mr.Name || "",
-              territory: mr.territory || mr.Territory || "",
+              name: mr.name || mr.Name || '',
+              territory: mr.territory || mr.Territory || '',
               base_salary: parseInt(mr.base_salary || mr['Base Salary']) || 30000,
               daily_allowance: parseInt(mr.daily_allowance || mr['Daily Allowance']) || 10000,
               joining_date: new Date().toISOString().split('T')[0],
-              phone: mr.phone || mr.Phone || mr.contact || mr.Contact || "",
-              email: mr.email || mr.Email || "",
-              status: "active",
+              phone: mr.phone || mr.Phone || mr.contact || mr.Contact || '',
+              email: mr.email || mr.Email || '',
+              status: 'active',
               performance_score: parseInt(mr.performance_score || mr['Performance Score']) || 75,
               total_sales: parseInt(mr.total_sales) || 0,
               targets_achieved: parseInt(mr.targets_achieved) || 0,
               targets_missed: parseInt(mr.targets_missed) || 0,
-              avatar_url: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop"
+              avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop'
             };
             (data.mrs as any).push(newMR);
             totalAdded++;
@@ -2553,14 +2672,330 @@ async function startServer() {
       res.json({ 
         success: true, 
         totalAdded,
-        message: `Successfully imported ${totalAdded} records` 
+        pendingCount,
+        message: autoAssign 
+          ? `Successfully imported ${totalAdded} records. ${pendingCount} entities saved to pending queue for AI assignment.`
+          : `${pendingCount} entities saved to pending queue. Use AI assignment to distribute to MRs.`,
+        nextStep: autoAssign ? 'Review pending entities for AI assignment' : 'Data directly imported'
       });
     } catch (error: any) {
       console.error('Error in /api/upload-data:', error);
       res.status(400).json({ 
-        error: "Upload failed",
+        error: 'Upload failed',
         message: error.message 
       });
+    }
+  });
+
+  // === Pending Entities (Phase 1: Data Persistence) ===
+  // Get all pending entities awaiting AI assignment
+  app.get("/api/pending-entities", (req, res) => {
+    const user = req.currentUser;
+    let entities = data.pending_entities as any[];
+    
+    // Filter by status if provided
+    if (req.query.status) {
+      entities = entities.filter(e => e.status === req.query.status);
+    }
+    
+    // Filter by entity type if provided
+    if (req.query.entity_type) {
+      entities = entities.filter(e => e.entity_type === req.query.entity_type);
+    }
+    
+    // Filter by territory if provided
+    if (req.query.territory) {
+      entities = entities.filter(e => e.territory === req.query.territory);
+    }
+    
+    res.json(entities);
+  });
+
+  // Get pending entities stats
+  app.get("/api/pending-entities/stats", (req, res) => {
+    const entities = data.pending_entities as any[];
+    const pending = entities.filter(e => e.status === 'pending');
+    
+    const stats = {
+      total: entities.length,
+      pending: pending.length,
+      assigned: entities.filter(e => e.status === 'assigned').length,
+      rejected: entities.filter(e => e.status === 'rejected').length,
+      by_type: {
+        doctors: pending.filter(e => e.entity_type === 'doctor').length,
+        pharmacies: pending.filter(e => e.entity_type === 'pharmacy').length,
+        hospitals: pending.filter(e => e.entity_type === 'hospital').length
+      },
+      by_territory: pending.reduce((acc: any, e: any) => {
+        const territory = e.territory || 'Unknown';
+        acc[territory] = (acc[territory] || 0) + 1;
+        return acc;
+      }, {})
+    };
+    
+    res.json(stats);
+  });
+
+  // Manually assign a pending entity to an MR
+  app.post("/api/pending-entities/:id/assign", (req, res) => {
+    const id = parseInt(req.params.id);
+    const { mr_id } = req.body;
+    
+    if (!mr_id) {
+      return res.status(400).json({ error: 'mr_id is required' });
+    }
+    
+    const entityIndex = data.pending_entities.findIndex((e: any) => e.id === id);
+    if (entityIndex === -1) {
+      return res.status(404).json({ error: 'Pending entity not found' });
+    }
+    
+    const mr = data.mrs.find((m: any) => m.id === mr_id);
+    if (!mr) {
+      return res.status(404).json({ error: 'MR not found' });
+    }
+    
+    const entity = data.pending_entities[entityIndex];
+    entity.status = 'assigned';
+    entity.assigned_mr_id = mr_id;
+    entity.assigned_date = new Date().toISOString();
+    
+    // Add entity to active database based on type
+    if (entity.entity_type === 'doctor') {
+      const newDoctor = {
+        id: nextId.doctors++,
+        ...entity.entity_data,
+        territory: entity.territory,
+        tier: entity.tier,
+        potential: 'medium' as const,
+        total_visits: 0,
+        total_orders: 0,
+        total_value: 0,
+        status: 'active',
+        visit_frequency: 14,
+        preferred_products: [],
+        last_visit: new Date().toISOString().split('T')[0],
+        area: entity.territory,
+        entity_type: 'Doctor',
+        rating: 4.0
+      };
+      (data.doctors as any).push(newDoctor);
+    } else if (entity.entity_type === 'pharmacy') {
+      const newPharmacy = {
+        id: nextId.pharmacies++,
+        ...entity.entity_data,
+        territory: entity.territory,
+        tier: entity.tier,
+        credit_limit: 100000,
+        credit_days: 30,
+        avg_monthly_purchase: 0,
+        payment_history: 'Good',
+        last_purchase_date: new Date().toISOString().split('T')[0]
+      };
+      (data.pharmacies as any).push(newPharmacy);
+    } else if (entity.entity_type === 'hospital') {
+      const newHospital = {
+        id: nextId.hospitals++,
+        ...entity.entity_data,
+        territory: entity.territory,
+        tier: entity.tier,
+        credit_limit: 500000,
+        credit_days: 45,
+        key_departments: ['General', 'Orthopedics', 'Pediatrics'],
+        total_purchases: 0,
+        status: 'active',
+        billing_contact: '',
+        medical_director: '',
+        notes: ''
+      };
+      (data.hospitals as any).push(newHospital);
+    }
+    
+    // Create visit schedule for the entity
+    const scheduleDate = new Date();
+    scheduleDate.setDate(scheduleDate.getDate() + 1); // Schedule for tomorrow
+    
+    const newSchedule = {
+      id: nextId.visit_schedules++,
+      mr_id: mr_id,
+      doctor_name: entity.entity_data.name,
+      clinic: entity.entity_data.clinic || entity.entity_data.name,
+      scheduled_date: scheduleDate.toISOString().split('T')[0],
+      scheduled_time: '10:00',
+      purpose: 'Initial Visit - AI Assigned',
+      status: 'pending',
+      priority: 'medium',
+      estimated_duration: 30,
+      notes: `Auto-assigned from pending entities. Territory: ${entity.territory}`
+    };
+    data.visit_schedules.push(newSchedule);
+    
+    res.json({
+      success: true,
+      message: `Entity assigned to ${mr.name} and scheduled for visit`,
+      entity,
+      schedule: newSchedule
+    });
+  });
+
+  // AI Bulk Auto-Assign all pending entities
+  app.post("/api/pending-entities/bulk-assign", (req, res) => {
+    try {
+      const { optimization = 'balanced' } = req.body;
+      const pendingEntities = (data.pending_entities as any[]).filter(e => e.status === 'pending');
+      
+      if (pendingEntities.length === 0) {
+        return res.json({ success: true, message: 'No pending entities to assign', assignments: [] });
+      }
+      
+      const mrs = data.mrs as any[];
+      const assignments = [];
+      
+      // Group pending entities by territory
+      const entitiesByTerritory = pendingEntities.reduce((acc: any, entity: any) => {
+        const territory = entity.territory || 'Unknown';
+        if (!acc[territory]) acc[territory] = [];
+        acc[territory].push(entity);
+        return acc;
+      }, {});
+      
+      // For each territory, find the best MR and assign
+      Object.entries(entitiesByTerritory).forEach(([territory, entities]: [string, any]) => {
+        // Find MRs that match this territory
+        const matchingMRs = mrs.filter(mr => 
+          mr.territory && (
+            territory.toLowerCase().includes(mr.territory.toLowerCase()) ||
+            mr.territory.toLowerCase().includes(territory.toLowerCase())
+          )
+        );
+        
+        if (matchingMRs.length === 0) {
+          // No matching MR, assign to first available MR
+          console.log(`[AI Assignment] No MR found for territory: ${territory}`);
+          return;
+        }
+        
+        // Sort MRs based on optimization strategy
+        let sortedMRs = [...matchingMRs];
+        if (optimization === 'performance') {
+          sortedMRs.sort((a, b) => (b.performance_score || 0) - (a.performance_score || 0));
+        } else if (optimization === 'workload') {
+          // Count current schedules for each MR
+          const countSchedules = (mrId: number) => {
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            const dateStr = tomorrow.toISOString().split('T')[0];
+            return data.visit_schedules.filter((s: any) => s.mr_id === mrId && s.scheduled_date === dateStr).length;
+          };
+          sortedMRs.sort((a, b) => countSchedules(a.id) - countSchedules(b.id));
+        }
+        // 'balanced' uses territory match (already filtered)
+        
+        // Assign entities to MRs (round-robin for balanced distribution)
+        entities.forEach((entity: any, index: number) => {
+          const assignedMR = sortedMRs[index % sortedMRs.length];
+          
+          // Update pending entity
+          entity.status = 'assigned';
+          entity.assigned_mr_id = assignedMR.id;
+          entity.assigned_date = new Date().toISOString();
+          entity.ai_confidence = 0.85 + (Math.random() * 0.15); // 85-100% confidence
+          
+          // Add to active database
+          if (entity.entity_type === 'doctor') {
+            const newDoctor = {
+              id: nextId.doctors++,
+              ...entity.entity_data,
+              territory: entity.territory,
+              tier: entity.tier,
+              potential: entity.tier === 'A' ? 'high' : entity.tier === 'C' ? 'low' : 'medium',
+              total_visits: 0,
+              total_orders: 0,
+              total_value: 0,
+              status: 'active',
+              visit_frequency: entity.tier === 'A' ? 7 : entity.tier === 'C' ? 21 : 14,
+              preferred_products: [],
+              last_visit: new Date().toISOString().split('T')[0],
+              area: entity.territory,
+              entity_type: 'Doctor',
+              rating: 4.0
+            };
+            (data.doctors as any).push(newDoctor);
+          } else if (entity.entity_type === 'pharmacy') {
+            const newPharmacy = {
+              id: nextId.pharmacies++,
+              ...entity.entity_data,
+              territory: entity.territory,
+              tier: entity.tier,
+              credit_limit: 100000,
+              credit_days: 30,
+              avg_monthly_purchase: 0,
+              payment_history: 'Good',
+              last_purchase_date: new Date().toISOString().split('T')[0]
+            };
+            (data.pharmacies as any).push(newPharmacy);
+          } else if (entity.entity_type === 'hospital') {
+            const newHospital = {
+              id: nextId.hospitals++,
+              ...entity.entity_data,
+              territory: entity.territory,
+              tier: entity.tier,
+              credit_limit: 500000,
+              credit_days: 45,
+              key_departments: ['General', 'Orthopedics', 'Pediatrics'],
+              total_purchases: 0,
+              status: 'active',
+              billing_contact: '',
+              medical_director: '',
+              notes: ''
+            };
+            (data.hospitals as any).push(newHospital);
+          }
+          
+          // Create visit schedule based on tier
+          const visitsPerWeek = entity.tier === 'A' ? 3 : entity.tier === 'C' ? 1 : 2;
+          for (let i = 0; i < visitsPerWeek; i++) {
+            const scheduleDate = new Date();
+            scheduleDate.setDate(scheduleDate.getDate() + (i * Math.floor(7 / visitsPerWeek)) + 1);
+            
+            const newSchedule = {
+              id: nextId.visit_schedules++,
+              mr_id: assignedMR.id,
+              doctor_name: entity.entity_data.name,
+              clinic: entity.entity_data.clinic || entity.entity_data.name,
+              scheduled_date: scheduleDate.toISOString().split('T')[0],
+              scheduled_time: `${9 + (i * 2)}:00`,
+              purpose: `Initial Visit - AI Assigned (${entity.tier}-tier)`,
+              status: 'pending',
+              priority: entity.tier === 'A' ? 'high' : entity.tier === 'C' ? 'low' : 'medium',
+              estimated_duration: 30,
+              notes: `AI Auto-Assigned. Territory: ${entity.territory}, Confidence: ${(entity.ai_confidence * 100).toFixed(0)}%`
+            };
+            data.visit_schedules.push(newSchedule);
+          }
+          
+          assignments.push({
+            entity_id: entity.id,
+            entity_name: entity.entity_data.name,
+            entity_type: entity.entity_type,
+            assigned_mr_id: assignedMR.id,
+            mr_name: assignedMR.name,
+            territory: entity.territory,
+            confidence: entity.ai_confidence,
+            reasoning: `Territory match + ${optimization} optimization`
+          });
+        });
+      });
+      
+      res.json({
+        success: true,
+        message: `AI assigned ${assignments.length} entities to ${new Set(assignments.map(a => a.assigned_mr_id)).size} MRs`,
+        assignments,
+        summary: `${assignments.length} entities assigned using ${optimization} strategy`
+      });
+    } catch (error: any) {
+      console.error('Error in bulk assign:', error);
+      res.status(500).json({ error: 'Bulk assignment failed', message: error.message });
     }
   });
 
@@ -3260,6 +3695,413 @@ async function startServer() {
     }
   });
 
+  // === Phase 3: Monthly AI Planning System ===
+  // Generate complete monthly visit plan for MRs
+  app.post("/api/ai/generate-monthly-plan", (req, res) => {
+    try {
+      const { mr_id, month, strategy = 'balanced' } = req.body;
+      
+      if (!month) {
+        return res.status(400).json({ error: 'Month is required (format: YYYY-MM)' });
+      }
+      
+      const [year, monthNum] = month.split('-').map(Number);
+      const daysInMonth = new Date(year, monthNum, 0).getDate();
+      
+      // Filter MRs
+      let targetMRs = data.mrs as any[];
+      if (mr_id) {
+        targetMRs = targetMRs.filter((mr: any) => mr.id === mr_id);
+        if (targetMRs.length === 0) {
+          return res.status(404).json({ error: 'MR not found' });
+        }
+      }
+      
+      const monthlyPlans: any[] = [];
+      
+      targetMRs.forEach((mr: any) => {
+        // Get all entities in MR's territory
+        const territoryKeywords = mr.territory.toLowerCase().split(/[(),]+/).map((s: string) => s.trim());
+        
+        const territoryDoctors = (data.doctors as any[]).filter((d: any) => {
+          const doctorTerritory = (d.territory || '').toLowerCase();
+          return territoryKeywords.some((keyword: string) => doctorTerritory.includes(keyword));
+        });
+        
+        // Calculate visit frequency based on tier and strategy
+        const getVisitsPerMonth = (tier: string) => {
+          const baseFrequency = {
+            'A': strategy === 'aggressive' ? 12 : strategy === 'conservative' ? 8 : 10,
+            'B': strategy === 'aggressive' ? 8 : strategy === 'conservative' ? 4 : 6,
+            'C': strategy === 'aggressive' ? 4 : strategy === 'conservative' ? 2 : 3
+          };
+          return baseFrequency[tier as keyof typeof baseFrequency] || 4;
+        };
+        
+        // Generate visit schedule for the month
+        const visits: any[] = [];
+        
+        territoryDoctors.forEach((doctor: any) => {
+          const visitsPerMonth = getVisitsPerMonth(doctor.tier);
+          
+          // Distribute visits across working days (avoid weekends)
+          let visitCount = 0;
+          for (let day = 1; day <= daysInMonth && visitCount < visitsPerMonth; day++) {
+            const date = new Date(year, monthNum - 1, day);
+            const dayOfWeek = date.getDay();
+            
+            // Skip weekends (0 = Sunday, 6 = Saturday)
+            if (dayOfWeek === 0 || dayOfWeek === 6) continue;
+            
+            // Simple distribution based on tier
+            const shouldVisit = 
+              (doctor.tier === 'A' && day % 3 === 0) ||
+              (doctor.tier === 'B' && day % 5 === 0) ||
+              (doctor.tier === 'C' && day % 10 === 0);
+            
+            if (shouldVisit) {
+              visits.push({
+                doctor_id: doctor.id,
+                doctor_name: doctor.name,
+                clinic: doctor.clinic,
+                specialty: doctor.specialty,
+                territory: doctor.territory,
+                tier: doctor.tier,
+                scheduled_date: `${month}-${String(day).padStart(2, '0')}`,
+                scheduled_time: `${9 + (visitCount % 4)}:00`,
+                priority: doctor.tier === 'A' ? 'high' : doctor.tier === 'C' ? 'low' : 'medium',
+                purpose: `Regular Visit - ${strategy} Strategy`,
+                estimated_duration: 30,
+                ai_generated: true
+              });
+              visitCount++;
+            }
+          }
+        });
+        
+        monthlyPlans.push({
+          mr_id: mr.id,
+          mr_name: mr.name,
+          territory: mr.territory,
+          month: month,
+          strategy: strategy,
+          total_visits: visits.length,
+          total_doctors: territoryDoctors.length,
+          visits_per_day: Math.round(visits.length / 22), // ~22 working days
+          visits,
+          generated_at: new Date().toISOString()
+        });
+      });
+      
+      res.json({
+        success: true,
+        message: `Monthly plan generated for ${monthlyPlans.length} MRs`,
+        plans: monthlyPlans,
+        summary: {
+          total_mrs: monthlyPlans.length,
+          total_visits: monthlyPlans.reduce((sum: number, p: any) => sum + p.total_visits, 0),
+          avg_visits_per_mr: Math.round(monthlyPlans.reduce((sum: number, p: any) => sum + p.total_visits, 0) / monthlyPlans.length)
+        }
+      });
+    } catch (error: any) {
+      console.error('Error generating monthly plan:', error);
+      res.status(500).json({ error: 'Monthly plan generation failed', message: error.message });
+    }
+  });
+
+  // Dynamic Re-Assignment Based on Performance
+  app.post("/api/ai/reassign-monthly-plan", (req, res) => {
+    try {
+      const { mr_id, month } = req.body;
+      
+      if (!month) {
+        return res.status(400).json({ error: 'Month is required (format: YYYY-MM)' });
+      }
+      
+      // Get visit schedules for the month
+      const monthPrefix = month;
+      const schedules = (data.visit_schedules as any[]).filter((s: any) => 
+        s.scheduled_date && s.scheduled_date.startsWith(monthPrefix) &&
+        (!mr_id || s.mr_id === mr_id)
+      );
+      
+      // Analyze performance: find underperforming MR-entity pairs
+      const reassignments: any[] = [];
+      const mrsByTerritory = (data.mrs as any[]).reduce((acc: any, mr: any) => {
+        const territory = mr.territory;
+        if (!acc[territory]) acc[territory] = [];
+        acc[territory].push(mr);
+        return acc;
+      }, {});
+      
+      // Group schedules by MR
+      const schedulesByMR = schedules.reduce((acc: any, s: any) => {
+        if (!acc[s.mr_id]) acc[s.mr_id] = [];
+        acc[s.mr_id].push(s);
+        return acc;
+      }, {});
+      
+      Object.entries(schedulesByMR).forEach(([mrIdStr, mrSchedules]: [string, any]) => {
+        const mrId = parseInt(mrIdStr);
+        const mr = (data.mrs as any[]).find((m: any) => m.id === mrId);
+        if (!mr) return;
+        
+        // Check if MR is behind schedule (completed < 70% of planned visits)
+        const completedVisits = mrSchedules.filter((s: any) => s.status === 'completed').length;
+        const totalVisits = mrSchedules.length;
+        const completionRate = totalVisits > 0 ? completedVisits / totalVisits : 0;
+        
+        if (completionRate < 0.7 && totalVisits > 10) {
+          // Find other MRs in same territory with better performance
+          const territoryMRs = mrsByTerritory[mr.territory] || [];
+          const betterMRs = territoryMRs.filter((otherMR: any) => {
+            if (otherMR.id === mrId) return false;
+            const otherSchedules = schedulesByMR[otherMR.id] || [];
+            const otherCompleted = otherSchedules.filter((s: any) => s.status === 'completed').length;
+            const otherRate = otherSchedules.length > 0 ? otherCompleted / otherSchedules.length : 0;
+            return otherRate > completionRate;
+          });
+          
+          if (betterMRs.length > 0) {
+            // Reassign some visits to better-performing MR
+            const bestMR = betterMRs.sort((a: any, b: any) => (b.performance_score || 0) - (a.performance_score || 0))[0];
+            const visitsToReassign = mrSchedules.filter((s: any) => s.status === 'pending').slice(0, Math.ceil(totalVisits * 0.3));
+            
+            visitsToReassign.forEach((visit: any) => {
+              reassignments.push({
+                schedule_id: visit.id,
+                from_mr_id: mrId,
+                from_mr_name: mr.name,
+                to_mr_id: bestMR.id,
+                to_mr_name: bestMR.name,
+                doctor_name: visit.doctor_name,
+                reason: `Underperformance: ${Math.round(completionRate * 100)}% completion rate`
+              });
+              
+              // Actually reassign
+              visit.mr_id = bestMR.id;
+              visit.notes = (visit.notes || '') + ` [Reassigned from ${mr.name} due to performance]`;
+            });
+          }
+        }
+      });
+      
+      res.json({
+        success: true,
+        message: `${reassignments.length} visits reassigned`,
+        reassignments,
+        summary: {
+          total_reassigned: reassignments.length,
+          mrs_affected: new Set(reassignments.map(r => r.from_mr_id)).size
+        }
+      });
+    } catch (error: any) {
+      console.error('Error in reassign monthly plan:', error);
+      res.status(500).json({ error: 'Reassignment failed', message: error.message });
+    }
+  });
+
+  // === Phase 4: Intelligent Notification & Reminder System ===
+  // Get notifications for current user
+  app.get("/api/notifications", (req, res) => {
+    const user = req.currentUser;
+    if (!user) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    
+    let notifications = (data.notifications || []) as any[];
+    
+    // Filter by user role
+    if (user.role === 'mr') {
+      notifications = notifications.filter((n: any) => 
+        n.user_id === user.mr_id || n.user_role === 'all' || n.user_role === 'mr'
+      );
+    } else if (user.role === 'manager' || user.role === 'admin') {
+      notifications = notifications.filter((n: any) => 
+        n.user_role === 'all' || n.user_role === 'manager' || n.user_role === 'admin'
+      );
+    }
+    
+    // Filter by type if provided
+    if (req.query.type) {
+      notifications = notifications.filter((n: any) => n.type === req.query.type);
+    }
+    
+    // Filter by unread if requested
+    if (req.query.unread === 'true') {
+      notifications = notifications.filter((n: any) => !n.read);
+    }
+    
+    // Sort by date (newest first)
+    notifications.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    
+    res.json(notifications);
+  });
+
+  // Mark notification as read
+  app.post("/api/notifications/:id/read", (req, res) => {
+    const id = parseInt(req.params.id);
+    const notification = (data.notifications as any[]).find((n: any) => n.id === id);
+    
+    if (!notification) {
+      return res.status(404).json({ error: 'Notification not found' });
+    }
+    
+    notification.read = true;
+    notification.read_at = new Date().toISOString();
+    
+    res.json({ success: true, notification });
+  });
+
+  // Create notification
+  app.post("/api/notifications", (req, res) => {
+    const { user_id, user_role, type, title, message, action_url } = req.body;
+    
+    const notification = {
+      id: nextId.notifications++,
+      user_id,
+      user_role: user_role || 'all',
+      type: type || 'info',
+      title,
+      message,
+      action_url: action_url || null,
+      read: false,
+      read_at: null,
+      created_at: new Date().toISOString()
+    };
+    
+    if (!data.notifications) data.notifications = [];
+    (data.notifications as any[]).push(notification);
+    
+    res.json({ success: true, notification });
+  });
+
+  // Notification Scheduler - Check and create notifications periodically
+  function runNotificationScheduler() {
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    const today = now.toISOString().split('T')[0];
+    const tomorrow = new Date(now);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = tomorrow.toISOString().split('T')[0];
+    
+    // 7 PM: Send next day's schedule to MRs
+    if (currentHour === 19 && currentMinute < 5) {
+      const tomorrowSchedules = (data.visit_schedules as any[]).filter((s: any) => 
+        s.scheduled_date === tomorrowStr && s.status === 'pending'
+      );
+      
+      const schedulesByMR = tomorrowSchedules.reduce((acc: any, s: any) => {
+        if (!acc[s.mr_id]) acc[s.mr_id] = [];
+        acc[s.mr_id].push(s);
+        return acc;
+      }, {});
+      
+      Object.entries(schedulesByMR).forEach(([mrId, schedules]: [string, any]) => {
+        const mr = (data.mrs as any[]).find((m: any) => m.id === parseInt(mrId));
+        if (mr) {
+          const existingNotification = (data.notifications || []).find((n: any) => 
+            n.user_id === mr.id && 
+            n.type === 'schedule_assignment' && 
+            n.created_at.startsWith(today)
+          );
+          
+          if (!existingNotification) {
+            (data.notifications || []).push({
+              id: nextId.notifications++,
+              user_id: mr.id,
+              user_role: 'mr',
+              type: 'schedule_assignment',
+              title: `Tomorrow's Schedule: ${schedules.length} Visits Planned`,
+              message: `You have ${schedules.length} visits scheduled for tomorrow. First visit: ${schedules[0]?.doctor_name || 'N/A'} at ${schedules[0]?.scheduled_time || 'N/A'}`,
+              action_url: `/daily-plan?date=${tomorrowStr}`,
+              read: false,
+              read_at: null,
+              created_at: now.toISOString()
+            });
+          }
+        }
+      });
+    }
+    
+    // 8 AM: Morning reminder
+    if (currentHour === 8 && currentMinute < 5) {
+      const todaySchedules = (data.visit_schedules as any[]).filter((s: any) => 
+        s.scheduled_date === today && s.status === 'pending'
+      );
+      
+      const schedulesByMR = todaySchedules.reduce((acc: any, s: any) => {
+        if (!acc[s.mr_id]) acc[s.mr_id] = [];
+        acc[s.mr_id].push(s);
+        return acc;
+      }, {});
+      
+      Object.entries(schedulesByMR).forEach(([mrId, schedules]: [string, any]) => {
+        const mr = (data.mrs as any[]).find((m: any) => m.id === parseInt(mrId));
+        if (mr) {
+          (data.notifications || []).push({
+            id: nextId.notifications++,
+            user_id: mr.id,
+            user_role: 'mr',
+            type: 'reminder',
+            title: 'Morning Reminder: Visits Today',
+            message: `Good morning! You have ${schedules.length} visits scheduled today. Start your first visit on time!`,
+            action_url: `/daily-plan?date=${today}`,
+            read: false,
+            read_at: null,
+            created_at: now.toISOString()
+          });
+        }
+      });
+    }
+    
+    // Weekly summary (Monday 9 AM)
+    if (now.getDay() === 1 && currentHour === 9 && currentMinute < 5) {
+      const lastWeek = new Date(now);
+      lastWeek.setDate(lastWeek.getDate() - 7);
+      const lastWeekStr = lastWeek.toISOString().split('T')[0];
+      
+      const lastWeekSchedules = (data.visit_schedules as any[]).filter((s: any) => 
+        s.scheduled_date >= lastWeekStr && 
+        s.scheduled_date < today && 
+        s.status === 'completed'
+      );
+      
+      const schedulesByMR = lastWeekSchedules.reduce((acc: any, s: any) => {
+        if (!acc[s.mr_id]) acc[s.mr_id] = [];
+        acc[s.mr_id].push(s);
+        return acc;
+      }, {});
+      
+      Object.entries(schedulesByMR).forEach(([mrId, schedules]: [string, any]) => {
+        const mr = (data.mrs as any[]).find((m: any) => m.id === parseInt(mrId));
+        if (mr) {
+          const thisWeekSchedules = (data.visit_schedules as any[]).filter((s: any) => 
+            s.scheduled_date >= today && 
+            s.mr_id === parseInt(mrId)
+          );
+          
+          (data.notifications || []).push({
+            id: nextId.notifications++,
+            user_id: mr.id,
+            user_role: 'mr',
+            type: 'performance_alert',
+            title: 'Weekly Performance Summary',
+            message: `Last week: ${schedules.length} visits completed. This week: ${thisWeekSchedules.length} visits scheduled. Keep up the great work!`,
+            action_url: '/performance',
+            read: false,
+            read_at: null,
+            created_at: now.toISOString()
+          });
+        }
+      });
+    }
+  }
+
+  // Run notification scheduler every minute
+  setInterval(runNotificationScheduler, 60000);
+  
   // Smart AI Search - No External Dependencies Required
   app.post("/api/ai-search", async (req, res) => {
     try {
@@ -3423,6 +4265,30 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    if (USE_DATABASE && db) {
+      console.log('💾 Database persistence: ENABLED');
+    } else {
+      console.log('⚠️  Database persistence: DISABLED (using in-memory storage)');
+    }
+  });
+
+  // Graceful shutdown
+  process.on('SIGINT', async () => {
+    console.log('\n🛑 Shutting down gracefully...');
+    if (db && db.closePool) {
+      await db.closePool();
+      console.log('✅ Database connection closed');
+    }
+    process.exit(0);
+  });
+
+  process.on('SIGTERM', async () => {
+    console.log('\n🛑 Shutting down gracefully...');
+    if (db && db.closePool) {
+      await db.closePool();
+      console.log('✅ Database connection closed');
+    }
+    process.exit(0);
   });
 }
 
