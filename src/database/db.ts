@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import { Pool, PoolConfig } from 'pg';
+import * as repositories from './repositories';
 
 console.log('DATABASE_URL:', process.env.DATABASE_URL ? '✅ Set' : '❌ Not set');
 
@@ -20,6 +21,9 @@ const poolConfig: PoolConfig = {
 
 // Create connection pool
 export const pool = new Pool(poolConfig);
+
+// Export repositories
+export { repositories };
 
 // Test connection
 pool.on('connect', () => {

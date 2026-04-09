@@ -2468,7 +2468,7 @@ async function startServer() {
 
       // Helper function to add to pending entities
       const addToPending = async (entityType: string, entityData: any, territory: string, tier: string) => {
-        if (USE_DATABASE && db && db.repositories) {
+        if (USE_DATABASE && db) {
           // Use database
           await db.repositories.createPendingEntity({
             entity_type: entityType,
@@ -2544,7 +2544,7 @@ async function startServer() {
                 rating: Math.random() * 5
               };
               
-              if (USE_DATABASE && db && db.repositories) {
+              if (USE_DATABASE && db) {
                 await db.repositories.createDoctor(newDoctor);
               } else {
                 newDoctor.id = nextId.doctors++;
