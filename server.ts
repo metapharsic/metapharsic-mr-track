@@ -2452,7 +2452,7 @@ async function startServer() {
     }
   });
 
-  app.post("/api/upload-data", (req, res) => {
+  app.post("/api/upload-data", async (req, res) => {
     try {
       if (!req.body || typeof req.body !== 'object') {
         return res.status(400).json({ 
@@ -2464,38 +2464,51 @@ async function startServer() {
       const uploadData = req.body;
       let totalAdded = 0;
       let pendingCount = 0;
-      const autoAssign = req.body.autoAssign === true; // Flag for immediate AI assignment
+      const autoAssign = req.body.autoAssign === true;
 
       // Helper function to add to pending entities
-      const addToPending = (entityType: string, entityData: any, territory: string, tier: string) => {
-        const pendingEntity = {
-          id: nextId.pending_entities++,
-          entity_type: entityType,
-          entity_data: entityData,
-          territory: territory || '',
-          tier: tier || 'B',
-          source: 'excel_upload',
-          upload_date: new Date().toISOString(),
-          uploaded_by: req.currentUser?.email || 'admin',
-          status: 'pending' as const,
-          assigned_mr_id: null,
-          assigned_date: null,
-          ai_confidence: null
-        };
-        (data.pending_entities as any).push(pendingEntity);
+      const addToPending = async (entityType: string, entityData: any, territory: string, tier: string) => {
+        if (USE_DATABASE && db && db.repositories) {
+          // Use database
+          await db.repositories.createPendingEntity({
+            entity_type: entityType,
+            entity_data: entityData,
+            territory: territory || '',
+            tier: tier || 'B',
+            source: 'excel_upload',
+            uploaded_by: req.currentUser?.email || 'admin',
+            status: 'pending'
+          });
+        } else {
+          // Use in-memory
+          const pendingEntity = {
+            id: nextId.pending_entities++,
+            entity_type: entityType,
+            entity_data: entityData,
+            territory: territory || '',
+            tier: tier || 'B',
+            source: 'excel_upload',
+            upload_date: new Date().toISOString(),
+            uploaded_by: req.currentUser?.email || 'admin',
+            status: 'pending' as const,
+            assigned_mr_id: null,
+            assigned_date: null,
+            ai_confidence: null
+          };
+          (data.pending_entities as any).push(pendingEntity);
+        }
         pendingCount++;
-        return pendingEntity;
       };
 
-      // Process Doctors - Add to pending first
+      // Process Doctors
       if (uploadData.doctors && Array.isArray(uploadData.doctors)) {
-        uploadData.doctors.forEach((doctor: any) => {
+        for (const doctor of uploadData.doctors) {
           try {
             const territory = doctor.territory || doctor.Territory || '';
             const tier = String(doctor.tier || doctor.Tier || 'B');
             
             // Add to pending entities
-            addToPending('doctor', {
+            await addToPending('doctor', {
               name: doctor.name || doctor.Name || '',
               clinic: doctor.clinic || doctor.Clinic || '',
               specialty: doctor.specialty || doctor.Specialty || '',
@@ -2510,7 +2523,6 @@ async function startServer() {
             // If autoAssign is true, also add directly to active doctors
             if (autoAssign) {
               const newDoctor: any = {
-                id: nextId.doctors++,
                 name: doctor.name || doctor.Name || '',
                 clinic: doctor.clinic || doctor.Clinic || '',
                 specialty: doctor.specialty || doctor.Specialty || '',
@@ -2531,24 +2543,30 @@ async function startServer() {
                 entity_type: 'Doctor',
                 rating: Math.random() * 5
               };
-              (data.doctors as any).push(newDoctor);
+              
+              if (USE_DATABASE && db && db.repositories) {
+                await db.repositories.createDoctor(newDoctor);
+              } else {
+                newDoctor.id = nextId.doctors++;
+                (data.doctors as any).push(newDoctor);
+              }
               totalAdded++;
             }
           } catch (e) {
             console.error('Error processing doctor:', e);
           }
-        });
+        }
       }
 
-      // Process Pharmacies - Add to pending first
+      // Process Pharmacies
       if (uploadData.pharmacies && Array.isArray(uploadData.pharmacies)) {
-        uploadData.pharmacies.forEach((pharmacy: any) => {
+        for (const pharmacy of uploadData.pharmacies) {
           try {
             const territory = pharmacy.city || pharmacy.City || '';
             const tier = String(pharmacy.tier || pharmacy.Tier || 'B');
             
             // Add to pending entities
-            addToPending('pharmacy', {
+            await addToPending('pharmacy', {
               name: pharmacy.name || pharmacy.Name || '',
               owner_name: pharmacy.owner || pharmacy.Owner || '',
               phone: pharmacy.contact || pharmacy.Contact || '',
@@ -2587,7 +2605,7 @@ async function startServer() {
           } catch (e) {
             console.error('Error processing pharmacy:', e);
           }
-        });
+        }
       }
 
       // Process Hospitals - Add to pending first
