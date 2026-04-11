@@ -12,33 +12,36 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Database configuration
-const USE_DATABASE = process.env.DATABASE_URL && process.env.DATABASE_URL.length > 0;
+// Note: We check both DATABASE_URL and db !== null because db initialization is async
 let db: any = null;
+let dbReady = false;
 
-if (USE_DATABASE) {
+const DATABASE_URL = process.env.DATABASE_URL;
+if (DATABASE_URL && DATABASE_URL.length > 0) {
   console.log('🔌 DATABASE_URL detected, initializing PostgreSQL...');
-  try {
-    import('./src/database/db').then((dbModule) => {
-      db = dbModule;
-      console.log('✅ PostgreSQL database module loaded');
-      
-      // Test connection
-      db.testConnection().then((connected: boolean) => {
-        if (connected) {
-          console.log('✅ PostgreSQL connection successful');
-          console.log('💾 All data will be persisted to database');
-        } else {
-          console.log('⚠️  PostgreSQL connection failed, falling back to in-memory storage');
-        }
-      });
-    }).catch((error) => {
-      console.error('❌ Failed to load database module:', error);
-      console.log('⚠️  Using in-memory storage as fallback');
+  import('./src/database/db').then((dbModule) => {
+    db = dbModule;
+    console.log('✅ PostgreSQL database module loaded');
+    
+    // Test connection
+    db.testConnection().then((connected: boolean) => {
+      if (connected) {
+        console.log('✅ PostgreSQL connection successful');
+        console.log('💾 All data will be persisted to database');
+        dbReady = true;
+      } else {
+        console.log('⚠️  PostgreSQL connection failed, falling back to in-memory storage');
+        db = null;
+      }
+    }).catch((err) => {
+      console.log('⚠️  PostgreSQL connection test failed, falling back to in-memory storage');
+      db = null;
     });
-  } catch (error) {
-    console.error('❌ Database initialization error:', error);
+  }).catch((error) => {
+    console.error('❌ Failed to load database module:', error);
     console.log('⚠️  Using in-memory storage as fallback');
-  }
+    db = null;
+  });
 } else {
   console.log('💾 No DATABASE_URL configured, using in-memory storage');
   console.log('💡 To enable PostgreSQL, add DATABASE_URL to your .env file');
@@ -1015,7 +1018,7 @@ async function startServer() {
       if (user.role === 'mr' && user.mr_id) {
         try {
           let mrRecord: any = null;
-          if (USE_DATABASE && db) {
+          if (dbReady && db) {
             mrRecord = await db.repositories.getMRById(user.mr_id);
           } else {
             mrRecord = (data.mrs as any[]).find((m: any) => m.id === user.mr_id);
@@ -1119,7 +1122,7 @@ async function startServer() {
       const user = req.currentUser;
       let mrs: any[];
       
-      if (USE_DATABASE && db) {
+      if (dbReady && db) {
         mrs = await db.repositories.getMRs();
       } else {
         mrs = data.mrs as any[];
@@ -1154,7 +1157,7 @@ async function startServer() {
       const user = req.currentUser;
       let doctors: any[];
       
-      if (USE_DATABASE && db) {
+      if (dbReady && db) {
         doctors = await db.repositories.getDoctors();
       } else {
         doctors = data.doctors as any[];
@@ -1184,7 +1187,7 @@ async function startServer() {
       const user = req.currentUser;
       let pharmacies: any[];
       
-      if (USE_DATABASE && db) {
+      if (dbReady && db) {
         pharmacies = await db.repositories.getPharmacies();
       } else {
         pharmacies = data.pharmacies as any[];
@@ -1214,7 +1217,7 @@ async function startServer() {
       const user = req.currentUser;
       let hospitals: any[];
       
-      if (USE_DATABASE && db) {
+      if (dbReady && db) {
         hospitals = await db.repositories.getHospitals();
       } else {
         hospitals = data.hospitals as any[];
@@ -1719,7 +1722,7 @@ async function startServer() {
     const index = data.mrs.findIndex(m => m.id === id);
 
     // Also persist to PostgreSQL when database is enabled
-    if (USE_DATABASE && db) {
+    if (dbReady && db) {
       try {
         const updated = await db.repositories.updateMR(id, req.body);
         if (!updated) return res.status(404).json({ error: "MR not found" });
@@ -2556,7 +2559,7 @@ async function startServer() {
       let totalPharmacies: number;
       let totalHospitals: number;
 
-      if (USE_DATABASE && db) {
+      if (dbReady && db) {
         // Query real counts directly from PostgreSQL
         const [dRes, pRes, hRes] = await Promise.all([
           db.pool.query('SELECT COUNT(*)::int AS cnt FROM doctors'),
@@ -2609,7 +2612,7 @@ async function startServer() {
 
       // Helper function to add to pending entities
       const addToPending = async (entityType: string, entityData: any, territory: string, tier: string) => {
-        if (USE_DATABASE && db) {
+        if (dbReady && db) {
           // Use database
           await db.repositories.createPendingEntity({
             entity_type: entityType,
@@ -2688,7 +2691,7 @@ async function startServer() {
                 isRMP: isRMP
               };
               
-              if (USE_DATABASE && db) {
+              if (dbReady && db) {
                 await db.repositories.createDoctor(newDoctor);
               } else {
                 newDoctor.id = nextId.doctors++;
@@ -2743,7 +2746,7 @@ async function startServer() {
                 discount_notes: ''
               };
               
-              if (USE_DATABASE && db) {
+              if (dbReady && db) {
                 await db.repositories.createPharmacy(newPharmacy);
               } else {
                 newPharmacy.id = nextId.pharmacies++;
@@ -2799,7 +2802,7 @@ async function startServer() {
                 notes: ''
               };
               
-              if (USE_DATABASE && db) {
+              if (dbReady && db) {
                 await db.repositories.createHospital(newHospital);
               } else {
                 newHospital.id = nextId.hospitals++;
@@ -2833,7 +2836,7 @@ async function startServer() {
               avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop'
             };
             
-            if (USE_DATABASE && db) {
+            if (dbReady && db) {
               await db.repositories.createMR(newMR);
             } else {
               newMR.id = nextId.mrs++;
@@ -4442,7 +4445,7 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
-    if (USE_DATABASE && db) {
+    if (dbReady && db) {
       console.log('💾 Database persistence: ENABLED');
     } else {
       console.log('⚠️  Database persistence: DISABLED (using in-memory storage)');
