@@ -23,17 +23,19 @@ interface ClassificationStats {
 }
 
 // Keywords for entity type detection
-const DOCTOR_KEYWORDS = ['dr.', 'doctor', 'md', 'mbbs', 'specialist', 'physician', 'consultant', 'qualification', 'clinic', 'practice'];
+// NOTE: 'clinic' and 'practice' removed — too generic; pharmacies/hospitals can contain these words
+const DOCTOR_KEYWORDS = ['dr.', 'doctor', 'mbbs', 'specialist', 'physician', 'consultant', 'bams', 'bds', 'ms.', 'md.', 'dgo', 'da.', 'dnb'];
 const RMP_KEYWORDS = ['rmp', 'registered medical practitioner', 'health worker', 'practitioner'];
-const PHARMACY_KEYWORDS = ['pharmacy', 'chemist', 'medical hall', 'drug store', 'retail pharmacy', 'chain pharmacy', 'chemistere'];
-const HOSPITAL_KEYWORDS = ['hospital', 'multispeciality', 'nursing home', 'healthcare', 'medical center', 'clinic chain'];
+const PHARMACY_KEYWORDS = ['pharmacy', 'chemist', 'medical hall', 'drug store', 'retail pharmacy', 'chain pharmacy', 'chemistere', 'medicals', 'medicine store', 'druggist'];
+const HOSPITAL_KEYWORDS = ['hospital', 'multispeciality', 'nursing home', 'medical center', 'clinic chain', 'multi speciality', 'superspeciality', 'healthcare centre', 'health care centre'];
 const MR_KEYWORDS = ['mr', 'medical representative', 'sales representative', 'territory', 'performance score', 'targets', 'salary', 'allowance'];
 
 /**
  * Normalize column names for flexible matching
+ * Removes spaces, underscores, hyphens, dots, slashes, brackets, colons
  */
 function normalizeColumn(col: string): string {
-  return col.toLowerCase().trim().replace(/[\s_-]/g, '');
+  return col.toLowerCase().trim().replace(/[\s_\-\.\/\(\)\#\:\,\'\"]/g, '');
 }
 
 /**
@@ -46,49 +48,58 @@ function hasKeywords(value: string, keywords: string[]): boolean {
 }
 
 /**
+ * Try to read an explicit entity-type field from the row (e.g. "Entity Type", "Type", "Category")
+ */
+function getExplicitEntityType(row: any): string {
+  const norm: Record<string, string> = {};
+  for (const [k, v] of Object.entries(row)) {
+    norm[normalizeColumn(k)] = String(v || '').toLowerCase().trim();
+  }
+  return norm['entitytype'] || norm['category'] || norm['entitycategory'] || norm['type'] || '';
+}
+
+/**
  * Detect entity type from a single row
+ * Uses VALUES-ONLY checking to avoid false positives from column header names
  */
 function detectEntityType(row: any, columns: string[]): string {
-  // Convert row data to analyzable format
-  const rowData = Object.entries(row)
-    .map(([key, val]) => String(val || '').toLowerCase())
+  // 1. Check explicit entity-type column ("Entity Type", "Category", "Type")
+  const explicitType = getExplicitEntityType(row);
+  if (explicitType) {
+    if (/rmp|registered.?medical.?practitioner/.test(explicitType)) return 'doctor';
+    if (/hospital|nursing.?home|medical.?center|multispeciali/.test(explicitType)) return 'hospital';
+    if (/pharmacy|chemist|medical.?hall|drug.?store/.test(explicitType)) return 'pharmacy';
+    if (/^doctor$|physician|consultant|dental/.test(explicitType)) return 'doctor';
+    if (/^mr$|^medical.?rep/.test(explicitType)) return 'mr';
+    if (/clinic/.test(explicitType)) return 'hospital';
+    if (/^gp$/.test(explicitType)) return 'doctor';
+  }
+
+  // 2. Use VALUES ONLY (not column header keys) for keyword detection
+  const valuesStr = Object.values(row)
+    .map(v => String(v || '').toLowerCase())
     .join(' ');
 
-  const rowJson = JSON.stringify(row).toLowerCase();
+  // Check RMP first (specific doctor subtype)
+  if (hasKeywords(valuesStr, RMP_KEYWORDS)) return 'doctor';
 
-  // Check for RMP first (more specific)
-  if (hasKeywords(rowJson, RMP_KEYWORDS)) {
-    return 'doctor'; // Will be marked as RMP in processing
-  }
+  // Check PHARMACY before DOCTOR — pharmacy keywords are more specific and
+  // reduce false-positive doctor matches (e.g. 'clinic' in pharmacy name)
+  if (hasKeywords(valuesStr, PHARMACY_KEYWORDS)) return 'pharmacy';
 
-  // Check for doctor
-  if (hasKeywords(rowJson, DOCTOR_KEYWORDS)) {
-    return 'doctor';
-  }
+  // Check hospital keywords in values
+  if (hasKeywords(valuesStr, HOSPITAL_KEYWORDS)) return 'hospital';
 
-  // Check for hospital
-  if (hasKeywords(rowJson, HOSPITAL_KEYWORDS)) {
-    const bedCount = Object.values(row).find(v => {
-      const num = parseInt(String(v));
-      return num > 50 && num < 1000; // Typical bed counts
-    });
-    if (bedCount) return 'hospital';
-  }
+  // Check doctor keywords last (broader terms)
+  if (hasKeywords(valuesStr, DOCTOR_KEYWORDS)) return 'doctor';
 
-  // Check for pharmacy/medical hall
-  if (hasKeywords(rowJson, PHARMACY_KEYWORDS)) {
-    return 'pharmacy';
-  }
-
-  // Check for MR (must have territory or performance score)
-  if (hasKeywords(rowJson, MR_KEYWORDS)) {
+  // Check MR — requires territory or performance in column headers (structure signal)
+  if (hasKeywords(valuesStr, MR_KEYWORDS)) {
     const hasTerritoryOrScore = columns.some(col => {
       const normalized = normalizeColumn(col);
       return normalized.includes('territory') || normalized.includes('score') || normalized.includes('performance');
     });
-    if (hasTerritoryOrScore) {
-      return 'mr';
-    }
+    if (hasTerritoryOrScore) return 'mr';
   }
 
   return 'unclassified';
@@ -107,10 +118,25 @@ function extractEntityData(row: any, entityType: string): any {
   };
 
   const norm = normalized(row);
-  const getField = (keys: string[]) => {
+  const getField = (keys: string[]): string => {
+    // 1. Exact normalized match
     for (const key of keys) {
-      if (norm[normalizeColumn(key)]) {
-        return norm[normalizeColumn(key)];
+      const nk = normalizeColumn(key);
+      const val = norm[nk];
+      if (val !== undefined && val !== null && String(val).trim() !== '') {
+        return String(val);
+      }
+    }
+    // 2. Partial match: any normalized column key contains a search key (or vice-versa)
+    for (const key of keys) {
+      const nk = normalizeColumn(key);
+      if (nk.length < 3) continue; // skip very short search terms
+      for (const [colKey, val] of Object.entries(norm)) {
+        if (val !== undefined && val !== null && String(val).trim() !== '') {
+          if (colKey.includes(nk) || (nk.length >= 4 && nk.includes(colKey) && colKey.length >= 3)) {
+            return String(val);
+          }
+        }
       }
     }
     return '';
@@ -123,13 +149,13 @@ function extractEntityData(row: any, entityType: string): any {
 
   if (entityType === 'doctor') {
     return {
-      name: getField(['name', 'doctorname', 'doctor']),
-      clinic: getField(['clinic', 'hospital', 'practiceplace']),
-      specialty: getField(['specialty', 'specialization', 'speciality']),
-      territory: getField(['territory', 'area', 'location', 'city']),
-      tier: String(getField(['tier', 'level', 'category']) || 'B'),
-      contact: getField(['contact', 'phone', 'mobile', 'contact']),
-      email: getField(['email', 'emailaddress']),
+      name: getField(['name', 'doctorname', 'doctor', 'drname', 'fullname', 'physicianname', 'consultantname']),
+      clinic: getField(['clinic', 'hospital', 'hospitalname', 'clinicname', 'practiceplace', 'hospitalclinic', 'worksatclinic']),
+      specialty: getField(['specialty', 'specialization', 'speciality', 'dept', 'department', 'qualification', 'spec']),
+      territory: getField(['territory', 'area', 'location', 'city', 'zone', 'region', 'district']),
+      tier: String(getField(['tier', 'level', 'category', 'grade', 'priority']) || 'B'),
+      contact: getField(['contact', 'phone', 'mobile', 'contactno', 'mobileno', 'phoneno', 'contactnumber', 'mobilenumber', 'phonenumber', 'tel']),
+      email: getField(['email', 'emailaddress', 'emailid', 'mail']),
       total_visits: getNumField(['visits', 'totalvisits', 'visitcount']),
       total_orders: getNumField(['orders', 'totalorders', 'ordercount']),
       total_value: getNumField(['value', 'totalvalue', 'revenue']),
@@ -137,41 +163,41 @@ function extractEntityData(row: any, entityType: string): any {
     };
   } else if (entityType === 'pharmacy') {
     return {
-      name: getField(['name', 'pharmacyname', 'chemistname']),
-      owner: getField(['owner', 'ownername', 'owneringpartner']),
-      type: getField(['type', 'pharmacytype', 'businesstype']),
-      city: getField(['city', 'location', 'area']),
-      contact: getField(['contact', 'phone', 'mobile']),
-      email: getField(['email', 'emailaddress']),
-      address: getField(['address', 'location']),
-      tier: String(getField(['tier', 'level', 'category']) || 'B'),
+      name: getField(['name', 'pharmacyname', 'chemistname', 'shopname', 'storename', 'medicalname']),
+      owner: getField(['owner', 'ownername', 'owneringpartner', 'proprietor', 'ownerpartner']),
+      type: getField(['type', 'pharmacytype', 'businesstype', 'shoptype', 'storetype', 'category']),
+      territory: getField(['territory', 'area', 'location', 'city', 'zone', 'region', 'district']),
+      contact: getField(['contact', 'phone', 'mobile', 'contactno', 'mobileno', 'phoneno', 'contactnumber', 'mobilenumber', 'phonenumber', 'tel']),
+      email: getField(['email', 'emailaddress', 'emailid', 'mail']),
+      address: getField(['address', 'location', 'addr', 'streetaddress', 'fulladdress']),
+      tier: String(getField(['tier', 'level', 'category', 'grade', 'priority']) || 'B'),
       total_purchases: getNumField(['purchases', 'totalpurchases', 'purchasevalue'])
     };
   } else if (entityType === 'hospital') {
     return {
-      name: getField(['name', 'hospitalname']),
-      type: getField(['type', 'hospitaltype', 'classification']),
-      beds: getNumField(['beds', 'bedcount', 'capacity']),
-      city: getField(['city', 'location', 'area']),
-      contact: getField(['contact', 'phone', 'mobile']),
-      email: getField(['email', 'emailaddress']),
-      address: getField(['address', 'location']),
-      tier: String(getField(['tier', 'level', 'category']) || 'B'),
+      name: getField(['name', 'hospitalname', 'clinicname', 'facilityname', 'institutionname']),
+      type: getField(['type', 'hospitaltype', 'classification', 'facilitytype', 'category']),
+      beds: getNumField(['beds', 'bedcount', 'capacity', 'noofbeds', 'numberofbeds']),
+      territory: getField(['territory', 'area', 'location', 'city', 'zone', 'region', 'district']),
+      contact: getField(['contact', 'phone', 'mobile', 'contactno', 'mobileno', 'phoneno', 'contactnumber', 'mobilenumber', 'phonenumber', 'tel']),
+      email: getField(['email', 'emailaddress', 'emailid', 'mail']),
+      address: getField(['address', 'location', 'addr', 'streetaddress', 'fulladdress']),
+      tier: String(getField(['tier', 'level', 'category', 'grade', 'priority']) || 'B'),
       total_purchases: getNumField(['purchases', 'totalpurchases', 'purchasevalue'])
     };
   } else if (entityType === 'mr') {
     return {
-      name: getField(['name', 'mrname', 'representativename']),
-      territory: getField(['territory', 'area', 'zone', 'region']),
-      contact: getField(['contact', 'phone', 'mobile']),
-      email: getField(['email', 'emailaddress']),
-      phone: getField(['phone', 'mobile', 'phonenumber']),
+      name: getField(['name', 'mrname', 'representativename', 'employeename', 'fullname']),
+      territory: getField(['territory', 'area', 'zone', 'region', 'district', 'city']),
+      contact: getField(['contact', 'phone', 'mobile', 'contactno', 'mobileno', 'phoneno', 'contactnumber', 'mobilenumber']),
+      email: getField(['email', 'emailaddress', 'emailid', 'mail']),
+      phone: getField(['phone', 'mobile', 'phonenumber', 'mobileno', 'contactno']),
       performance_score: getNumField(['performance', 'performancescore', 'score'], 75),
-      base_salary: getNumField(['salary', 'basesalary', 'monthlysalary']),
-      daily_allowance: getNumField(['allowance', 'dailyallowance', 'da']),
+      base_salary: getNumField(['salary', 'basesalary', 'monthlysalary', 'basepay']),
+      daily_allowance: getNumField(['allowance', 'dailyallowance', 'da', 'travelallowance']),
       total_sales: getNumField(['sales', 'totalsales', 'revenue']),
       targets_achieved: getNumField(['targets', 'targetachieved', 'achieved']),
-      targets_missed: getNumField(['missed', 'targetmissed', 'missed'])
+      targets_missed: getNumField(['missed', 'targetmissed'])
     };
   }
 
@@ -210,7 +236,9 @@ export function classifyMixedData(data: any[]): { result: ClassificationResult; 
         return;
       }
 
-      const entityType = detectEntityType(row, columns);
+      // Use the row's own keys as columns (handles multi-sheet data correctly)
+      const rowColumns = Object.keys(row);
+      const entityType = detectEntityType(row, rowColumns);
       const extractedData = extractEntityData(row, entityType);
 
       if (entityType === 'doctor') {

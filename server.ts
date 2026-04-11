@@ -991,7 +991,7 @@ async function startServer() {
 
   // Authentication middleware for demo/production
   // Expects: Authorization: Bearer <user_email> OR x-user-email header
-  app.use((req, res, next) => {
+  app.use(async (req, res, next) => {
     // Skip for auth endpoint itself
     if (req.path === '/api/auth/google') return next();
 
@@ -1009,6 +1009,24 @@ async function startServer() {
     const emailToMatch = Array.isArray(userEmail) ? userEmail[0] : (userEmail || '');
     const user = (data as any).users?.find((u: any) => u.email.toLowerCase() === emailToMatch.toLowerCase());
     if (user) {
+      // For MR users, always look up the CURRENT territory from the mrs table.
+      // This ensures territory changes made by admin are immediately reflected
+      // without requiring the MR to log out and back in.
+      if (user.role === 'mr' && user.mr_id) {
+        try {
+          let mrRecord: any = null;
+          if (USE_DATABASE && db) {
+            mrRecord = await db.repositories.getMRById(user.mr_id);
+          } else {
+            mrRecord = (data.mrs as any[]).find((m: any) => m.id === user.mr_id);
+          }
+          if (mrRecord?.territory) {
+            user.territory = mrRecord.territory;
+          }
+        } catch (e) {
+          // Ignore lookup errors — fall back to stored territory
+        }
+      }
       req.currentUser = user;
     } else {
       req.currentUser = null;
@@ -1018,10 +1036,32 @@ async function startServer() {
 
   // Territory filtering middleware
   // For MR users, automatically filters data by their territory
+  // Supports sub-area matching: MR territory like "Hyderabad East (Secunderabad, Tarnaka, Uppal)"
+  // will match entities with territory "Uppal", "Secunderabad", "Tarnaka", or the full string.
+  const extractSubAreas = (territory: string): string[] => {
+    const areas = [territory];
+    // Match content inside parentheses: "Hyderabad East (Secunderabad, Tarnaka, Uppal)"
+    const match = territory.match(/\(([^)]+)\)/);
+    if (match) {
+      const subAreas = match[1].split(',').map(s => s.trim()).filter(Boolean);
+      areas.push(...subAreas);
+    }
+    return areas;
+  };
+
   const filterByTerritory = (user: any, items: any[], territoryField = 'territory') => {
     if (!user || user.role === 'admin') return items;
     if (user.role === 'mr' && user.territory) {
-      return items.filter((item: any) => item[territoryField] === user.territory);
+      const allowedAreas = extractSubAreas(user.territory);
+      return items.filter((item: any) => {
+        const itemTerritory = (item[territoryField] || item.area || '').trim();
+        if (!itemTerritory) return false; // Skip entities with no territory
+        return allowedAreas.some(area =>
+          itemTerritory === area ||
+          itemTerritory.toLowerCase().includes(area.toLowerCase()) ||
+          area.toLowerCase().includes(itemTerritory.toLowerCase())
+        );
+      });
     }
     return items;
   };
@@ -1074,13 +1114,25 @@ async function startServer() {
   });
 
   // GET /api/mrs - Admins see all, MRs see only their own record
-  app.get("/api/mrs", (req, res) => {
-    const user = req.currentUser;
-    let mrs = data.mrs as any[];
-    if (user?.role === 'mr' && user.mr_id) {
-      mrs = mrs.filter(mr => mr.id === user.mr_id);
+  app.get("/api/mrs", async (req, res) => {
+    try {
+      const user = req.currentUser;
+      let mrs: any[];
+      
+      if (USE_DATABASE && db) {
+        mrs = await db.repositories.getMRs();
+      } else {
+        mrs = data.mrs as any[];
+      }
+      
+      if (user?.role === 'mr' && user.mr_id) {
+        mrs = mrs.filter(mr => mr.id === user.mr_id);
+      }
+      res.json(mrs);
+    } catch (error) {
+      console.error('Error fetching MRs:', error);
+      res.status(500).json({ error: 'Failed to fetch MRs' });
     }
-    res.json(mrs);
   });
 
   app.post("/api/mrs", (req, res) => {
@@ -1097,39 +1149,90 @@ async function startServer() {
     res.status(201).json(newMr);
   });
   app.get("/api/products", (req, res) => res.json(data.products));
-  app.get("/api/doctors", (req, res) => {
-    const user = req.currentUser;
-    let doctors = data.doctors as any[];
-    if (user?.role === 'mr' && user.territory) {
-      doctors = doctors.filter(d => d.territory === user.territory);
+  app.get("/api/doctors", async (req, res) => {
+    try {
+      const user = req.currentUser;
+      let doctors: any[];
+      
+      if (USE_DATABASE && db) {
+        doctors = await db.repositories.getDoctors();
+      } else {
+        doctors = data.doctors as any[];
+      }
+      
+      if (user?.role === 'mr' && user.territory) {
+        const allowedAreas = extractSubAreas(user.territory);
+        doctors = doctors.filter(d => {
+          const t = (d.territory || d.area || '').trim();
+          if (!t) return false;
+          return allowedAreas.some(area => t === area || t.toLowerCase().includes(area.toLowerCase()) || area.toLowerCase().includes(t.toLowerCase()));
+        });
+      }
+      res.json(doctors);
+    } catch (error) {
+      console.error('Error fetching doctors:', error);
+      res.status(500).json({ error: 'Failed to fetch doctors' });
     }
-    res.json(doctors);
   });
   app.post("/api/doctors", (req, res) => {
     const newDoctor = { id: Date.now(), ...req.body };
     data.doctors.push(newDoctor);
     res.status(201).json(newDoctor);
   });
-  app.get("/api/pharmacies", (req, res) => {
-    const user = req.currentUser;
-    let pharmacies = data.pharmacies as any[];
-    if (user?.role === 'mr' && user.territory) {
-      pharmacies = pharmacies.filter(p => p.territory === user.territory);
+  app.get("/api/pharmacies", async (req, res) => {
+    try {
+      const user = req.currentUser;
+      let pharmacies: any[];
+      
+      if (USE_DATABASE && db) {
+        pharmacies = await db.repositories.getPharmacies();
+      } else {
+        pharmacies = data.pharmacies as any[];
+      }
+      
+      if (user?.role === 'mr' && user.territory) {
+        const allowedAreas = extractSubAreas(user.territory);
+        pharmacies = pharmacies.filter(p => {
+          const t = (p.territory || p.area || '').trim();
+          if (!t) return false;
+          return allowedAreas.some(area => t === area || t.toLowerCase().includes(area.toLowerCase()) || area.toLowerCase().includes(t.toLowerCase()));
+        });
+      }
+      res.json(pharmacies);
+    } catch (error) {
+      console.error('Error fetching pharmacies:', error);
+      res.status(500).json({ error: 'Failed to fetch pharmacies' });
     }
-    res.json(pharmacies);
   });
   app.post("/api/pharmacies", (req, res) => {
     const newPharmacy = { id: Date.now(), ...req.body };
     data.pharmacies.push(newPharmacy);
     res.status(201).json(newPharmacy);
   });
-  app.get("/api/hospitals", (req, res) => {
-    const user = req.currentUser;
-    let hospitals = data.hospitals as any[];
-    if (user?.role === 'mr' && user.territory) {
-      hospitals = hospitals.filter(h => h.territory === user.territory);
+  app.get("/api/hospitals", async (req, res) => {
+    try {
+      const user = req.currentUser;
+      let hospitals: any[];
+      
+      if (USE_DATABASE && db) {
+        hospitals = await db.repositories.getHospitals();
+      } else {
+        hospitals = data.hospitals as any[];
+      }
+      
+      if (user?.role === 'mr' && user.territory) {
+        const allowedAreas = extractSubAreas(user.territory);
+        hospitals = hospitals.filter(h => {
+          const t = (h.territory || h.area || '').trim();
+          if (!t) return false;
+          return allowedAreas.some(area => t === area || t.toLowerCase().includes(area.toLowerCase()) || area.toLowerCase().includes(t.toLowerCase()));
+        });
+      }
+      res.json(hospitals);
+    } catch (error) {
+      console.error('Error fetching hospitals:', error);
+      res.status(500).json({ error: 'Failed to fetch hospitals' });
     }
-    res.json(hospitals);
   });
   app.post("/api/hospitals", (req, res) => {
     const newHospital = { id: Date.now(), ...req.body };
@@ -1611,9 +1714,30 @@ async function startServer() {
     res.status(201).json(newLead);
   });
 
-  app.patch("/api/mrs/:id", (req, res) => {
+  app.patch("/api/mrs/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     const index = data.mrs.findIndex(m => m.id === id);
+
+    // Also persist to PostgreSQL when database is enabled
+    if (USE_DATABASE && db) {
+      try {
+        const updated = await db.repositories.updateMR(id, req.body);
+        if (!updated) return res.status(404).json({ error: "MR not found" });
+        // Sync in-memory too for compatibility
+        if (index !== -1) data.mrs[index] = { ...data.mrs[index], ...req.body };
+        // Update user account territory if stored in-memory users
+        const newTerritory = req.body.territory;
+        if (newTerritory) {
+          const userIndex = data.users.findIndex((u: any) => u.mr_id === id);
+          if (userIndex !== -1) data.users[userIndex].territory = newTerritory;
+        }
+        return res.json(updated);
+      } catch (e: any) {
+        console.error('Error updating MR in DB:', e);
+        return res.status(500).json({ error: 'Failed to update MR', message: e.message });
+      }
+    }
+    // In-memory fallback path
     if (index !== -1) {
       const oldTerritory = data.mrs[index].territory;
       const newTerritory = req.body.territory || oldTerritory;
@@ -2426,11 +2550,28 @@ async function startServer() {
   });
 
   // Data Management Endpoints
-  app.get("/api/data-stats", (req, res) => {
+  app.get("/api/data-stats", async (req, res) => {
     try {
-      const totalDoctors = data.doctors.length;
-      const totalPharmacies = data.pharmacies.length;
-      const totalHospitals = data.hospitals.length;
+      let totalDoctors: number;
+      let totalPharmacies: number;
+      let totalHospitals: number;
+
+      if (USE_DATABASE && db) {
+        // Query real counts directly from PostgreSQL
+        const [dRes, pRes, hRes] = await Promise.all([
+          db.pool.query('SELECT COUNT(*)::int AS cnt FROM doctors'),
+          db.pool.query('SELECT COUNT(*)::int AS cnt FROM pharmacies'),
+          db.pool.query('SELECT COUNT(*)::int AS cnt FROM hospitals'),
+        ]);
+        totalDoctors    = dRes.rows[0].cnt;
+        totalPharmacies = pRes.rows[0].cnt;
+        totalHospitals  = hRes.rows[0].cnt;
+      } else {
+        totalDoctors    = data.doctors.length;
+        totalPharmacies = data.pharmacies.length;
+        totalHospitals  = data.hospitals.length;
+      }
+
       const lastUpdated = new Date().toLocaleDateString('en-US', { 
         year: 'numeric', 
         month: 'short', 
@@ -2500,15 +2641,16 @@ async function startServer() {
         pendingCount++;
       };
 
-      // Process Doctors
+      // Process Doctors (including RMPs)
       if (uploadData.doctors && Array.isArray(uploadData.doctors)) {
         for (const doctor of uploadData.doctors) {
           try {
             const territory = doctor.territory || doctor.Territory || '';
             const tier = String(doctor.tier || doctor.Tier || 'B');
+            const isRMP = doctor.isRMP === true;
             
             // Add to pending entities
-            await addToPending('doctor', {
+            await addToPending(isRMP ? 'rmp' : 'doctor', {
               name: doctor.name || doctor.Name || '',
               clinic: doctor.clinic || doctor.Clinic || '',
               specialty: doctor.specialty || doctor.Specialty || '',
@@ -2517,7 +2659,8 @@ async function startServer() {
               address: doctor.address || doctor.Address || '',
               total_visits: parseInt(doctor.total_visits) || 0,
               total_orders: parseInt(doctor.total_orders) || 0,
-              total_value: parseInt(doctor.total_value) || 0
+              total_value: parseInt(doctor.total_value) || 0,
+              isRMP: isRMP
             }, territory, tier);
 
             // If autoAssign is true, also add directly to active doctors
@@ -2540,8 +2683,9 @@ async function startServer() {
                 preferred_products: [],
                 last_visit: new Date().toISOString().split('T')[0],
                 area: '',
-                entity_type: 'Doctor',
-                rating: Math.random() * 5
+                entity_type: isRMP ? 'RMP' : 'Doctor',
+                rating: Math.random() * 5,
+                isRMP: isRMP
               };
               
               if (USE_DATABASE && db) {
@@ -2562,7 +2706,7 @@ async function startServer() {
       if (uploadData.pharmacies && Array.isArray(uploadData.pharmacies)) {
         for (const pharmacy of uploadData.pharmacies) {
           try {
-            const territory = pharmacy.city || pharmacy.City || '';
+            const territory = pharmacy.territory || pharmacy.Territory || pharmacy.city || pharmacy.City || pharmacy.area || pharmacy.Area || '';
             const tier = String(pharmacy.tier || pharmacy.Tier || 'B');
             
             // Add to pending entities
@@ -2580,7 +2724,6 @@ async function startServer() {
             // If autoAssign is true, also add directly to active pharmacies
             if (autoAssign) {
               const newPharmacy: any = {
-                id: nextId.pharmacies++,
                 name: pharmacy.name || pharmacy.Name || '',
                 owner_name: pharmacy.owner || pharmacy.Owner || '',
                 phone: pharmacy.contact || pharmacy.Contact || '',
@@ -2599,7 +2742,13 @@ async function startServer() {
                 gst_number: '',
                 discount_notes: ''
               };
-              (data.pharmacies as any).push(newPharmacy);
+              
+              if (USE_DATABASE && db) {
+                await db.repositories.createPharmacy(newPharmacy);
+              } else {
+                newPharmacy.id = nextId.pharmacies++;
+                (data.pharmacies as any).push(newPharmacy);
+              }
               totalAdded++;
             }
           } catch (e) {
@@ -2610,13 +2759,13 @@ async function startServer() {
 
       // Process Hospitals - Add to pending first
       if (uploadData.hospitals && Array.isArray(uploadData.hospitals)) {
-        uploadData.hospitals.forEach((hospital: any) => {
+        for (const hospital of uploadData.hospitals) {
           try {
-            const territory = hospital.city || hospital.City || '';
+            const territory = hospital.territory || hospital.Territory || hospital.city || hospital.City || hospital.area || hospital.Area || '';
             const tier = String(hospital.tier || hospital.Tier || 'B');
             
             // Add to pending entities
-            addToPending('hospital', {
+            await addToPending('hospital', {
               name: hospital.name || hospital.Name || '',
               type: hospital.type || hospital.Type || 'Private',
               contact_person: '',
@@ -2631,7 +2780,6 @@ async function startServer() {
             // If autoAssign is true, also add directly to active hospitals
             if (autoAssign) {
               const newHospital: any = {
-                id: nextId.hospitals++,
                 name: hospital.name || hospital.Name || '',
                 type: hospital.type || hospital.Type || 'Private',
                 contact_person: '',
@@ -2650,21 +2798,26 @@ async function startServer() {
                 medical_director: '',
                 notes: ''
               };
-              (data.hospitals as any).push(newHospital);
+              
+              if (USE_DATABASE && db) {
+                await db.repositories.createHospital(newHospital);
+              } else {
+                newHospital.id = nextId.hospitals++;
+                (data.hospitals as any).push(newHospital);
+              }
               totalAdded++;
             }
           } catch (e) {
             console.error('Error processing hospital:', e);
           }
-        });
+        }
       }
 
       // Process MRs (MRs are added directly, not to pending)
       if (uploadData.mrs && Array.isArray(uploadData.mrs)) {
-        uploadData.mrs.forEach((mr: any) => {
+        for (const mr of uploadData.mrs) {
           try {
             const newMR: any = {
-              id: nextId.mrs++,
               name: mr.name || mr.Name || '',
               territory: mr.territory || mr.Territory || '',
               base_salary: parseInt(mr.base_salary || mr['Base Salary']) || 30000,
@@ -2679,12 +2832,18 @@ async function startServer() {
               targets_missed: parseInt(mr.targets_missed) || 0,
               avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop'
             };
-            (data.mrs as any).push(newMR);
+            
+            if (USE_DATABASE && db) {
+              await db.repositories.createMR(newMR);
+            } else {
+              newMR.id = nextId.mrs++;
+              (data.mrs as any).push(newMR);
+            }
             totalAdded++;
           } catch (e) {
             console.error('Error processing MR:', e);
           }
-        });
+        }
       }
 
       res.json({ 

@@ -26,6 +26,48 @@ interface DataQuality {
   suggestions: string[];
 }
 
+/**
+ * Smart sheet parser: detects the actual header row by finding the first row
+ * with 3+ non-empty text cells, then maps subsequent rows using those headers.
+ * Handles Excel files with merged title rows at the top (e.g. min_row=3 or 4 in Python).
+ */
+function parseSheetSmart(worksheet: any): any[] {
+  const rawArray: any[][] = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+  if (!rawArray || rawArray.length === 0) return [];
+
+  // Find the first row with at least 3 non-empty string/text cells — that's the real header row
+  let headerRowIdx = 0;
+  for (let i = 0; i < Math.min(6, rawArray.length); i++) {
+    const row = rawArray[i];
+    if (!row) continue;
+    const textCells = row.filter(
+      (cell: any) => cell !== null && cell !== undefined && typeof cell === 'string' && cell.trim().length > 1
+    ).length;
+    if (textCells >= 3) {
+      headerRowIdx = i;
+      break;
+    }
+  }
+
+  const headers: string[] = (rawArray[headerRowIdx] || []).map(
+    (h: any) => (h !== null && h !== undefined ? String(h).trim() : '')
+  );
+
+  const result: any[] = [];
+  for (let i = headerRowIdx + 1; i < rawArray.length; i++) {
+    const row = rawArray[i];
+    if (!row) continue;
+    // Skip completely empty rows
+    if (row.every((cell: any) => cell === null || cell === undefined || String(cell).trim() === '')) continue;
+    const obj: any = {};
+    headers.forEach((h, idx) => {
+      if (h) obj[h] = row[idx] !== undefined && row[idx] !== null ? row[idx] : '';
+    });
+    result.push(obj);
+  }
+  return result;
+}
+
 export default function DataManagement() {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
@@ -39,6 +81,7 @@ export default function DataManagement() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [downloadType, setDownloadType] = useState<'all' | 'doctors' | 'pharmacies' | 'hospitals' | 'mrs'>('all');
   const [isDragOver, setIsDragOver] = useState(false);
+  const [previewTab, setPreviewTab] = useState<'doctors' | 'pharmacies' | 'hospitals' | 'mrs' | 'unclassified'>('doctors');
   
   // NEW: Pending entities state
   const [pendingEntities, setPendingEntities] = useState<any[]>([]);
@@ -191,11 +234,19 @@ export default function DataManagement() {
           let allRows: any[] = [];
           workbook.SheetNames.forEach(sheetName => {
             const worksheet = workbook.Sheets[sheetName];
-            const json = XLSX.utils.sheet_to_json(worksheet);
-            allRows = allRows.concat(json);
+            // Use smart header detection to handle multi-row title Excel files
+            const sheetRows = parseSheetSmart(worksheet);
+            allRows = allRows.concat(sheetRows);
           });
 
           const { result: classifiedData, stats } = classifyMixedData(allRows);
+
+          // Auto-select the first non-empty tab
+          const firstTab = classifiedData.doctors.length > 0 ? 'doctors' :
+            classifiedData.pharmacies.length > 0 ? 'pharmacies' :
+            classifiedData.hospitals.length > 0 ? 'hospitals' :
+            classifiedData.mrs.length > 0 ? 'mrs' : 'unclassified';
+          setPreviewTab(firstTab as any);
 
           setClassificationPreview({
             stats,
@@ -489,51 +540,275 @@ export default function DataManagement() {
                 </>
               ) : (
                 <div>
-                  <div className="bg-green-50 p-4 rounded-xl border border-green-200 mb-4">
-                    <div className="flex items-start gap-2">
-                      <CheckCircle className="text-green-600 flex-shrink-0 mt-0.5" size={20} />
-                      <div>
-                        <h3 className="font-bold text-slate-900">Classification Complete</h3>
-                        <pre className="text-xs text-slate-600 mt-1 whitespace-pre-wrap font-mono">{classificationPreview.summary}</pre>
-                      </div>
+                  {/* Classification Complete Banner */}
+                  <div className="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-xl border border-green-200 mb-5">
+                    <div className="flex items-center gap-3 mb-3">
+                      <CheckCircle className="text-green-600" size={24} />
+                      <h3 className="font-bold text-slate-900 text-lg">Classification Complete — {classificationPreview.stats.totalRows} rows processed</h3>
+                    </div>
+                    {/* Summary chips */}
+                    <div className="flex flex-wrap gap-2">
+                      {classificationPreview.stats.doctors > 0 && (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold">
+                          <Stethoscope size={12} /> {classificationPreview.stats.doctors} Doctors
+                        </span>
+                      )}
+                      {classificationPreview.stats.rmp > 0 && (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-semibold">
+                          <UserCheck size={12} /> {classificationPreview.stats.rmp} RMPs
+                        </span>
+                      )}
+                      {classificationPreview.stats.pharmacies > 0 && (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-xs font-semibold">
+                          <Package size={12} /> {classificationPreview.stats.pharmacies} Pharmacies
+                        </span>
+                      )}
+                      {classificationPreview.stats.medicalHalls > 0 && (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-xs font-semibold">
+                          <Package size={12} /> {classificationPreview.stats.medicalHalls} Medical Halls
+                        </span>
+                      )}
+                      {classificationPreview.stats.hospitals > 0 && (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-red-100 text-red-800 rounded-full text-xs font-semibold">
+                          <Users size={12} /> {classificationPreview.stats.hospitals} Hospitals
+                        </span>
+                      )}
+                      {classificationPreview.stats.mrs > 0 && (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-cyan-100 text-cyan-800 rounded-full text-xs font-semibold">
+                          <Users size={12} /> {classificationPreview.stats.mrs} MRs
+                        </span>
+                      )}
+                      {classificationPreview.stats.unclassified > 0 && (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-xs font-semibold">
+                          <AlertCircle size={12} /> {classificationPreview.stats.unclassified} Unclassified
+                        </span>
+                      )}
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-3 mb-4">
-                    {classificationPreview.stats.doctors > 0 && (
-                      <div className="bg-blue-50 p-3 rounded-lg border-l-4 border-blue-600">
-                        <p className="text-sm font-semibold text-slate-700">Doctors</p>
-                        <p className="text-xl font-bold text-blue-600">{classificationPreview.stats.doctors}</p>
+                  {/* Tabbed Data Preview */}
+                  <div className="mb-5">
+                    <div className="flex gap-1 bg-slate-100 rounded-lg p-1 mb-4 flex-wrap">
+                      {[
+                        { key: 'doctors' as const, label: `Doctors (${(classificationPreview.data.doctors?.length || 0) + (classificationPreview.stats.rmp || 0)})`, color: 'blue', show: (classificationPreview.data.doctors?.length || 0) > 0 },
+                        { key: 'pharmacies' as const, label: `Pharmacies (${classificationPreview.data.pharmacies?.length || 0})`, color: 'purple', show: (classificationPreview.data.pharmacies?.length || 0) > 0 },
+                        { key: 'hospitals' as const, label: `Hospitals (${classificationPreview.data.hospitals?.length || 0})`, color: 'red', show: (classificationPreview.data.hospitals?.length || 0) > 0 },
+                        { key: 'mrs' as const, label: `MRs (${classificationPreview.data.mrs?.length || 0})`, color: 'cyan', show: (classificationPreview.data.mrs?.length || 0) > 0 },
+                        { key: 'unclassified' as const, label: `Unclassified (${classificationPreview.data.unclassified?.length || 0})`, color: 'gray', show: (classificationPreview.data.unclassified?.length || 0) > 0 },
+                      ].filter(t => t.show).map(({ key, label }) => (
+                        <button
+                          key={key}
+                          onClick={() => setPreviewTab(key)}
+                          className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                            previewTab === key
+                              ? 'bg-white text-slate-900 shadow-sm'
+                              : 'text-slate-500 hover:text-slate-700'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Doctors Table */}
+                    {previewTab === 'doctors' && classificationPreview.data.doctors?.length > 0 && (
+                      <div className="overflow-auto max-h-72 rounded-xl border border-slate-200">
+                        <table className="w-full text-xs">
+                          <thead className="bg-blue-50 sticky top-0">
+                            <tr>
+                              <th className="text-left py-2 px-3 font-semibold text-blue-700">#</th>
+                              <th className="text-left py-2 px-3 font-semibold text-blue-700">Name</th>
+                              <th className="text-left py-2 px-3 font-semibold text-blue-700">Specialty</th>
+                              <th className="text-left py-2 px-3 font-semibold text-blue-700">Clinic</th>
+                              <th className="text-left py-2 px-3 font-semibold text-blue-700">Territory</th>
+                              <th className="text-left py-2 px-3 font-semibold text-blue-700">Tier</th>
+                              <th className="text-left py-2 px-3 font-semibold text-blue-700">Contact</th>
+                              <th className="text-left py-2 px-3 font-semibold text-blue-700">Type</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {classificationPreview.data.doctors.map((d: any, i: number) => (
+                              <tr key={i} className="hover:bg-slate-50">
+                                <td className="py-2 px-3 text-slate-400">{i + 1}</td>
+                                <td className="py-2 px-3 font-medium text-slate-900">{d.name || '—'}</td>
+                                <td className="py-2 px-3 text-slate-600">{d.specialty || '—'}</td>
+                                <td className="py-2 px-3 text-slate-600">{d.clinic || '—'}</td>
+                                <td className="py-2 px-3">
+                                  <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded text-xs">{d.territory || '—'}</span>
+                                </td>
+                                <td className="py-2 px-3">
+                                  <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${
+                                    d.tier === 'A' ? 'bg-green-100 text-green-700' :
+                                    d.tier === 'B' ? 'bg-yellow-100 text-yellow-700' :
+                                    'bg-red-100 text-red-700'
+                                  }`}>{d.tier || 'B'}</span>
+                                </td>
+                                <td className="py-2 px-3 text-slate-600">{d.contact || '—'}</td>
+                                <td className="py-2 px-3">
+                                  <span className={`px-1.5 py-0.5 rounded text-xs ${
+                                    d.isRMP ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
+                                  }`}>{d.isRMP ? 'RMP' : 'Doctor'}</span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     )}
-                    {classificationPreview.stats.rmp > 0 && (
-                      <div className="bg-emerald-50 p-3 rounded-lg border-l-4 border-emerald-600">
-                        <p className="text-sm font-semibold text-slate-700">RMPs</p>
-                        <p className="text-xl font-bold text-emerald-600">{classificationPreview.stats.rmp}</p>
+
+                    {/* Pharmacies Table */}
+                    {previewTab === 'pharmacies' && classificationPreview.data.pharmacies?.length > 0 && (
+                      <div className="overflow-auto max-h-72 rounded-xl border border-slate-200">
+                        <table className="w-full text-xs">
+                          <thead className="bg-purple-50 sticky top-0">
+                            <tr>
+                              <th className="text-left py-2 px-3 font-semibold text-purple-700">#</th>
+                              <th className="text-left py-2 px-3 font-semibold text-purple-700">Name</th>
+                              <th className="text-left py-2 px-3 font-semibold text-purple-700">Owner</th>
+                              <th className="text-left py-2 px-3 font-semibold text-purple-700">Type</th>
+                              <th className="text-left py-2 px-3 font-semibold text-purple-700">Territory</th>
+                              <th className="text-left py-2 px-3 font-semibold text-purple-700">Tier</th>
+                              <th className="text-left py-2 px-3 font-semibold text-purple-700">Contact</th>
+                              <th className="text-left py-2 px-3 font-semibold text-purple-700">Address</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {classificationPreview.data.pharmacies.map((p: any, i: number) => (
+                              <tr key={i} className="hover:bg-slate-50">
+                                <td className="py-2 px-3 text-slate-400">{i + 1}</td>
+                                <td className="py-2 px-3 font-medium text-slate-900">{p.name || '—'}</td>
+                                <td className="py-2 px-3 text-slate-600">{p.owner || '—'}</td>
+                                <td className="py-2 px-3">
+                                  <span className="px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-xs">{p.type || '—'}</span>
+                                </td>
+                                <td className="py-2 px-3">
+                                  <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded text-xs">{p.territory || '—'}</span>
+                                </td>
+                                <td className="py-2 px-3">
+                                  <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${
+                                    p.tier === 'A' ? 'bg-green-100 text-green-700' :
+                                    p.tier === 'B' ? 'bg-yellow-100 text-yellow-700' :
+                                    'bg-red-100 text-red-700'
+                                  }`}>{p.tier || 'B'}</span>
+                                </td>
+                                <td className="py-2 px-3 text-slate-600">{p.contact || '—'}</td>
+                                <td className="py-2 px-3 text-slate-500 max-w-32 truncate">{p.address || '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     )}
-                    {classificationPreview.stats.pharmacies > 0 && (
-                      <div className="bg-purple-50 p-3 rounded-lg border-l-4 border-purple-600">
-                        <p className="text-sm font-semibold text-slate-700">Pharmacies</p>
-                        <p className="text-xl font-bold text-purple-600">{classificationPreview.stats.pharmacies}</p>
+
+                    {/* Hospitals Table */}
+                    {previewTab === 'hospitals' && classificationPreview.data.hospitals?.length > 0 && (
+                      <div className="overflow-auto max-h-72 rounded-xl border border-slate-200">
+                        <table className="w-full text-xs">
+                          <thead className="bg-red-50 sticky top-0">
+                            <tr>
+                              <th className="text-left py-2 px-3 font-semibold text-red-700">#</th>
+                              <th className="text-left py-2 px-3 font-semibold text-red-700">Name</th>
+                              <th className="text-left py-2 px-3 font-semibold text-red-700">Type</th>
+                              <th className="text-left py-2 px-3 font-semibold text-red-700">Beds</th>
+                              <th className="text-left py-2 px-3 font-semibold text-red-700">Territory</th>
+                              <th className="text-left py-2 px-3 font-semibold text-red-700">Tier</th>
+                              <th className="text-left py-2 px-3 font-semibold text-red-700">Contact</th>
+                              <th className="text-left py-2 px-3 font-semibold text-red-700">Address</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {classificationPreview.data.hospitals.map((h: any, i: number) => (
+                              <tr key={i} className="hover:bg-slate-50">
+                                <td className="py-2 px-3 text-slate-400">{i + 1}</td>
+                                <td className="py-2 px-3 font-medium text-slate-900">{h.name || '—'}</td>
+                                <td className="py-2 px-3">
+                                  <span className="px-1.5 py-0.5 bg-red-100 text-red-700 rounded text-xs">{h.type || '—'}</span>
+                                </td>
+                                <td className="py-2 px-3 text-slate-600">{h.beds || '—'}</td>
+                                <td className="py-2 px-3">
+                                  <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded text-xs">{h.territory || '—'}</span>
+                                </td>
+                                <td className="py-2 px-3">
+                                  <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${
+                                    h.tier === 'A' ? 'bg-green-100 text-green-700' :
+                                    h.tier === 'B' ? 'bg-yellow-100 text-yellow-700' :
+                                    'bg-red-100 text-red-700'
+                                  }`}>{h.tier || 'B'}</span>
+                                </td>
+                                <td className="py-2 px-3 text-slate-600">{h.contact || '—'}</td>
+                                <td className="py-2 px-3 text-slate-500 max-w-32 truncate">{h.address || '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     )}
-                    {classificationPreview.stats.hospitals > 0 && (
-                      <div className="bg-red-50 p-3 rounded-lg border-l-4 border-red-600">
-                        <p className="text-sm font-semibold text-slate-700">Hospitals</p>
-                        <p className="text-xl font-bold text-red-600">{classificationPreview.stats.hospitals}</p>
+
+                    {/* MRs Table */}
+                    {previewTab === 'mrs' && classificationPreview.data.mrs?.length > 0 && (
+                      <div className="overflow-auto max-h-72 rounded-xl border border-slate-200">
+                        <table className="w-full text-xs">
+                          <thead className="bg-cyan-50 sticky top-0">
+                            <tr>
+                              <th className="text-left py-2 px-3 font-semibold text-cyan-700">#</th>
+                              <th className="text-left py-2 px-3 font-semibold text-cyan-700">Name</th>
+                              <th className="text-left py-2 px-3 font-semibold text-cyan-700">Territory</th>
+                              <th className="text-left py-2 px-3 font-semibold text-cyan-700">Contact</th>
+                              <th className="text-left py-2 px-3 font-semibold text-cyan-700">Email</th>
+                              <th className="text-left py-2 px-3 font-semibold text-cyan-700">Salary</th>
+                              <th className="text-left py-2 px-3 font-semibold text-cyan-700">Performance</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {classificationPreview.data.mrs.map((m: any, i: number) => (
+                              <tr key={i} className="hover:bg-slate-50">
+                                <td className="py-2 px-3 text-slate-400">{i + 1}</td>
+                                <td className="py-2 px-3 font-medium text-slate-900">{m.name || '—'}</td>
+                                <td className="py-2 px-3">
+                                  <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded text-xs">{m.territory || '—'}</span>
+                                </td>
+                                <td className="py-2 px-3 text-slate-600">{m.contact || m.phone || '—'}</td>
+                                <td className="py-2 px-3 text-slate-600">{m.email || '—'}</td>
+                                <td className="py-2 px-3 text-slate-600">{m.base_salary ? `₹${m.base_salary.toLocaleString()}` : '—'}</td>
+                                <td className="py-2 px-3">
+                                  {m.performance_score ? (
+                                    <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${
+                                      m.performance_score >= 80 ? 'bg-green-100 text-green-700' :
+                                      m.performance_score >= 60 ? 'bg-yellow-100 text-yellow-700' :
+                                      'bg-red-100 text-red-700'
+                                    }`}>{m.performance_score}%</span>
+                                  ) : '—'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     )}
-                    {classificationPreview.stats.mrs > 0 && (
-                      <div className="bg-cyan-50 p-3 rounded-lg border-l-4 border-cyan-600">
-                        <p className="text-sm font-semibold text-slate-700">MRs</p>
-                        <p className="text-xl font-bold text-cyan-600">{classificationPreview.stats.mrs}</p>
-                      </div>
-                    )}
-                    {classificationPreview.stats.unclassified > 0 && (
-                      <div className="bg-gray-50 p-3 rounded-lg border-l-4 border-gray-400">
-                        <p className="text-sm font-semibold text-slate-700">Unclassified</p>
-                        <p className="text-xl font-bold text-gray-600">{classificationPreview.stats.unclassified}</p>
+
+                    {/* Unclassified Table */}
+                    {previewTab === 'unclassified' && classificationPreview.data.unclassified?.length > 0 && (
+                      <div className="overflow-auto max-h-72 rounded-xl border border-amber-200 bg-amber-50">
+                        <div className="p-3 border-b border-amber-200">
+                          <p className="text-xs font-semibold text-amber-700 flex items-center gap-1">
+                            <AlertCircle size={12} />
+                            These rows could not be auto-classified. Check your Excel column headers.
+                          </p>
+                        </div>
+                        <table className="w-full text-xs">
+                          <tbody className="divide-y divide-amber-100">
+                            {classificationPreview.data.unclassified.slice(0, 20).map((row: any, i: number) => (
+                              <tr key={i} className="hover:bg-amber-100/50">
+                                <td className="py-2 px-3 text-amber-600 font-semibold w-8">{i + 1}</td>
+                                <td className="py-2 px-3">
+                                  <pre className="text-amber-700 whitespace-pre-wrap break-all font-mono text-xs">
+                                    {JSON.stringify(row, null, 2).substring(0, 200)}
+                                  </pre>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     )}
                   </div>
@@ -551,7 +826,7 @@ export default function DataManagement() {
                       className="flex-1 px-4 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 font-medium flex items-center justify-center gap-2"
                     >
                       {isLoading ? <Loader2 size={18} className="animate-spin" /> : <CheckCircle size={18} />}
-                      {isLoading ? 'Uploading...' : 'Confirm & Upload'}
+                      {isLoading ? 'Uploading...' : `Confirm & Save to Healthcare Directory`}
                     </button>
                   </div>
                 </div>

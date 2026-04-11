@@ -345,26 +345,26 @@ export default function MRDashboard() {
                 </div>
               </div>
 
-              <div className="flex flex-wrap gap-4">
-                <div className="bg-white/10 backdrop-blur-sm px-4 py-2 rounded-xl border border-white/10">
+              <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 sm:gap-4">
+                <div className="bg-white/10 backdrop-blur-sm px-3 sm:px-4 py-2 rounded-xl border border-white/10">
                   <p className="text-xs text-blue-200 uppercase font-bold tracking-wider">Today&apos;s Visits</p>
-                  <p className="text-2xl font-bold">{schedules.length}</p>
+                  <p className="text-xl sm:text-2xl font-bold">{schedules.length}</p>
                 </div>
-                <div className="bg-white/10 backdrop-blur-sm px-4 py-2 rounded-xl border border-white/10">
+                <div className="bg-white/10 backdrop-blur-sm px-3 sm:px-4 py-2 rounded-xl border border-white/10">
                   <p className="text-xs text-blue-200 uppercase font-bold tracking-wider">Completed</p>
-                  <p className="text-2xl font-bold">
+                  <p className="text-xl sm:text-2xl font-bold">
                     {schedules.filter(s => s.status === 'completed').length}
                   </p>
                 </div>
-                <div className="bg-white/10 backdrop-blur-sm px-4 py-2 rounded-xl border border-white/10">
+                <div className="bg-white/10 backdrop-blur-sm px-3 sm:px-4 py-2 rounded-xl border border-white/10">
                   <p className="text-xs text-blue-200 uppercase font-bold tracking-wider">In Progress</p>
-                  <p className="text-2xl font-bold">
+                  <p className="text-xl sm:text-2xl font-bold">
                     {schedules.filter(s => s.status === 'in_progress' || startedVisits.has(s.id)).length}
                   </p>
                 </div>
-                <div className="bg-white/10 backdrop-blur-sm px-4 py-2 rounded-xl border border-white/10">
+                <div className="bg-white/10 backdrop-blur-sm px-3 sm:px-4 py-2 rounded-xl border border-white/10">
                   <p className="text-xs text-blue-200 uppercase font-bold tracking-wider">Performance</p>
-                  <p className="text-2xl font-bold">{selectedMr.performance_score}%</p>
+                  <p className="text-xl sm:text-2xl font-bold">{selectedMr.performance_score}%</p>
                 </div>
               </div>
             </div>
@@ -534,7 +534,7 @@ export default function MRDashboard() {
 
                     {/* Action buttons — always visible */}
                     <div className={cn(
-                      'flex items-center gap-2',
+                      'flex flex-col sm:flex-row items-stretch sm:items-center gap-2',
                       viewMode === 'grid' ? 'px-5 pb-4' : 'px-4 pb-3'
                     )}>
                       {!isCompleted && (
@@ -542,7 +542,7 @@ export default function MRDashboard() {
                           onClick={() => handleStartVisit(schedule)}
                           disabled={startingVisit === schedule.id}
                           className={cn(
-                            'flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 rounded-xl font-bold transition-all shadow-sm',
+                            'flex items-center justify-center gap-2 px-4 py-3 sm:py-2 rounded-xl font-bold transition-all shadow-sm min-h-[44px]',
                             isStarted
                               ? 'bg-sky-600 text-white hover:bg-sky-700'
                               : 'bg-blue-600 text-white hover:bg-blue-700'
@@ -561,7 +561,7 @@ export default function MRDashboard() {
                       {isCompleted && (
                         <button
                           disabled
-                          className="flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl font-bold cursor-default"
+                          className="flex items-center justify-center gap-2 px-4 py-3 sm:py-2 bg-emerald-600 text-white rounded-xl font-bold cursor-default min-h-[44px]"
                         >
                           <CheckCircle2 className="w-4 h-4" />
                           <span>Completed</span>

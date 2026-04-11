@@ -217,9 +217,9 @@ export default function MRFieldTracker() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-4 pb-8">
+    <div className="max-w-2xl mx-auto space-y-4 pb-8 px-4 md:px-0">
       {/* Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl p-6 text-white">
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl p-4 md:p-6 text-white">
         <div className="flex items-center gap-3 mb-2">
           <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center font-bold">{mrProfile?.name?.split(' ').map((n: string) => n[0]).join('')}</div>
           <div>
@@ -228,11 +228,11 @@ export default function MRFieldTracker() {
           </div>
         </div>
         {summary && (
-          <div className="grid grid-cols-4 gap-2 mt-4">
-            <div className="bg-white/10 rounded-lg p-2 text-center"><p className="text-[10px] text-blue-200 font-bold uppercase">Completed</p><p className="text-xl font-bold">{summary.completed_visits || 0}</p></div>
-            <div className="bg-white/10 rounded-lg p-2 text-center"><p className="text-[10px] text-blue-200 font-bold uppercase">Pending</p><p className="text-xl font-bold">{summary.scheduled_visits - summary.completed_visits || todayVisits.length}</p></div>
-            <div className="bg-white/10 rounded-lg p-2 text-center"><p className="text-[10px] text-blue-200 font-bold uppercase">Missed</p><p className="text-xl font-bold text-red-300">{summary.missed_visits || 0}</p></div>
-            <div className="bg-white/10 rounded-lg p-2 text-center"><p className="text-[10px] text-blue-200 font-bold uppercase">Compliance</p><p className="text-xl font-bold">{summary.schedule_compliance}%</p></div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
+            <div className="bg-white/10 rounded-lg p-2 text-center"><p className="text-[10px] text-blue-200 font-bold uppercase">Completed</p><p className="text-lg md:text-xl font-bold">{summary.completed_visits || 0}</p></div>
+            <div className="bg-white/10 rounded-lg p-2 text-center"><p className="text-[10px] text-blue-200 font-bold uppercase">Pending</p><p className="text-lg md:text-xl font-bold">{summary.scheduled_visits - summary.completed_visits || todayVisits.length}</p></div>
+            <div className="bg-white/10 rounded-lg p-2 text-center"><p className="text-[10px] text-blue-200 font-bold uppercase">Missed</p><p className="text-lg md:text-xl font-bold text-red-300">{summary.missed_visits || 0}</p></div>
+            <div className="bg-white/10 rounded-lg p-2 text-center"><p className="text-[10px] text-blue-200 font-bold uppercase">Compliance</p><p className="text-lg md:text-xl font-bold">{summary.schedule_compliance}%</p></div>
           </div>
         )}
       </div>
@@ -241,11 +241,11 @@ export default function MRFieldTracker() {
       <div>
         <h3 className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-2"><Calendar className="w-4 h-4 text-blue-600" />Today's Schedule ({todayVisits.length})</h3>
         {todayVisits.length === 0 ? (
-          <div className="bg-white border border-gray-200 rounded-xl p-6 text-center text-gray-400 text-sm">No pending visits left for today.</div>
+          <div className="bg-white border border-gray-200 rounded-xl p-4 md:p-6 text-center text-gray-400 text-sm">No pending visits left for today.</div>
         ) : todayVisits.filter(v => v.status !== 'in_progress').length > 0 ? (
           <div className="space-y-3">
             {todayVisits.filter(v => v.status !== 'in_progress').map((v) => (
-              <div key={v.id} className="bg-white border border-gray-200 rounded-xl p-4 flex items-center justify-between">
+              <div key={v.id} className="bg-white border border-gray-200 rounded-xl p-3 md:p-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-sm">{v.scheduled_time}</div>
                   <div>

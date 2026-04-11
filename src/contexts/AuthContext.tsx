@@ -155,10 +155,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const savedUsers = localStorage.getItem('metapharsic_users');
       const parsedUsers: User[] = savedUsers ? JSON.parse(savedUsers) : [];
 
-      // Always ensure default users exist (merge by email)
+      // Merge users: defaults go first, then saved values override them.
+      // This ensures admin-updated territories (e.g. Rajesh → "Nacharam") are
+      // preserved across page reloads instead of being reset to hardcoded defaults.
       const emailMap = new Map<string, User>();
-      for (const u of parsedUsers) emailMap.set(u.email.toLowerCase(), u);
       for (const u of [DEFAULT_ADMIN, ...DEFAULT_MR_USERS]) emailMap.set(u.email.toLowerCase(), u);
+      for (const u of parsedUsers) emailMap.set(u.email.toLowerCase(), u);
 
       // Re-assign consistent IDs based on the defaults
       mergedUsers = Array.from(emailMap.values());

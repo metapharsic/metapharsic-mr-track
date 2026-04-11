@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { locationService } from '../services/locationService';
 import { NavLink } from 'react-router-dom';
-import { Circle, CircleDashed } from 'lucide-react';
+import { Circle, CircleDashed, X, Menu } from 'lucide-react';
 import {
   LayoutDashboard,
   Users,
@@ -98,6 +98,7 @@ const navCategories = [
     items: [
       { icon: Users, label: 'MR Management', path: '/mrs', permission: 'mrs.view' },
       { icon: MapPin, label: 'Admin Field Monitor', path: '/mr-tracking', permission: 'data.view', roles: ['admin', 'manager'] },
+      { icon: Brain, label: 'Visit Scheduler', path: '/visit-schedule', permission: 'schedule.view', roles: ['admin', 'manager'] },
     ]
   },
   {
@@ -156,6 +157,7 @@ export default function Sidebar({ onOpenSearch }: SidebarProps) {
   const { unreadCount, setIsPanelOpen, isPanelOpen } = useNotifications();
   const { user, logout, hasPermission } = useAuth();
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const toggleCategory = (categoryId: string) => {
     setCollapsedCategories(prev => ({
@@ -168,16 +170,55 @@ export default function Sidebar({ onOpenSearch }: SidebarProps) {
     setIsMac(navigator.platform.toUpperCase().indexOf('MAC') >= 0);
   }, []);
 
+  // Close mobile menu on navigation
+  useEffect(() => {
+    if (mobileOpen) {
+      const handleRouteChange = () => setMobileOpen(false);
+      window.addEventListener('popstate', handleRouteChange);
+      return () => window.removeEventListener('popstate', handleRouteChange);
+    }
+  }, [mobileOpen]);
+
   const handleLogout = () => {
     logout();
   };
 
   return (
-    <div className="w-64 bg-slate-900 text-white h-screen flex flex-col fixed left-0 top-0 z-50">
-      <div className="p-6 border-b border-slate-800">
-        <h1 className="text-xl font-bold text-blue-400 tracking-tight">Metapharsic</h1>
-        <p className="text-xs text-slate-400 uppercase font-semibold mt-1">Lifesciences</p>
-      </div>
+    <>
+      {/* Mobile hamburger button */}
+      <button
+        onClick={() => setMobileOpen(!mobileOpen)}
+        className="lg:hidden fixed top-4 left-4 z-[60] p-2 bg-slate-900 text-white rounded-lg shadow-lg"
+        aria-label="Toggle menu"
+      >
+        {mobileOpen ? <X size={20} /> : <Menu size={20} />}
+      </button>
+
+      {/* Mobile overlay backdrop */}
+      {mobileOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/50 z-40"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      {/* Sidebar */}
+      <div className={cn(
+        "w-64 bg-slate-900 text-white h-screen flex flex-col fixed left-0 top-0 z-50 transition-transform duration-300",
+        "lg:translate-x-0",
+        mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+      )}>
+        {/* Close button on mobile */}
+        <div className="lg:hidden absolute top-4 right-4">
+          <button onClick={() => setMobileOpen(false)} className="p-1 text-slate-400 hover:text-white">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="p-6 border-b border-slate-800">
+          <h1 className="text-xl font-bold text-blue-400 tracking-tight">Metapharsic</h1>
+          <p className="text-xs text-slate-400 uppercase font-semibold mt-1">Lifesciences</p>
+        </div>
 
       {/* AI Search Button */}
       <div className="px-4 pt-4 pb-2">
@@ -292,5 +333,6 @@ export default function Sidebar({ onOpenSearch }: SidebarProps) {
 
       <NotificationPanel />
     </div>
+    </>
   );
 }

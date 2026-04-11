@@ -12,7 +12,7 @@ export default function TopBar() {
   if (!user) return null;
 
   return (
-    <div className="h-16 bg-white border-b border-gray-200 px-6 flex items-center justify-between">
+    <div className="h-16 bg-white border-b border-gray-200 px-4 md:px-6 lg:px-6 pl-16 lg:pl-6 flex items-center justify-between">
       {/* Left side - empty or can add breadcrumbs later */}
       <div className="flex-1" />
 

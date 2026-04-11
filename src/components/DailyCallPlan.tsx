@@ -253,55 +253,55 @@ export default function DailyCallPlan() {
   // ===== VISIT FLOW MODAL =====
   if (showVisitFlow && activePlan) {
     return (
-      <div className="max-w-2xl mx-auto space-y-6 pb-8">
+      <div className="max-w-2xl mx-auto space-y-4 md:space-y-6 pb-8 px-4 md:px-0">
         {/* Flow header */}
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl p-6 text-white">
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl p-4 md:p-6 text-white">
           <button onClick={() => { setShowVisitFlow(false); setActivePlan(null); }}
             className="flex items-center gap-2 text-blue-200 hover:text-white mb-3 text-sm">
             <ArrowLeft size={16} /> Back to Call Plan
           </button>
           <div className="flex items-center gap-3">
-            <div className={cn('w-12 h-12 rounded-xl flex items-center justify-center bg-white/20', entityColor(activePlan.entity_type))}>
-              {entityIcon(activePlan.entity_type, 24)}
+            <div className={cn('w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center bg-white/20', entityColor(activePlan.entity_type))}>
+              {entityIcon(activePlan.entity_type, 20)}
             </div>
             <div>
-              <h2 className="text-lg font-bold">{activePlan.entity_name}</h2>
+              <h2 className="text-base md:text-lg font-bold">{activePlan.entity_name}</h2>
               <p className="text-blue-200 text-xs">{activePlan.clinic}{activePlan.area && ` • ${activePlan.area}`}</p>
             </div>
           </div>
         </div>
 
         {/* Step indicator */}
-        <div className="flex items-center gap-2 px-2">
+        <div className="flex items-center gap-1.5 md:gap-2 px-2">
           {['Check-in', 'Visit', 'Complete'].map((label, i) => {
             const stepNames = ['checkin', 'form', 'submitting'];
             const idx = stepNames.indexOf(visitStep);
             return (
               <React.Fragment key={label}>
                 <div className={cn(
-                  'w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold',
+                  'w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center text-[10px] md:text-xs font-bold',
                   i < idx ? 'bg-green-500 text-white' : i === idx ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-500'
-                )}>{i < idx ? <CheckCircle2 size={14} /> : i + 1}</div>
+                )}>{i < idx ? <CheckCircle2 size={12} /> : i + 1}</div>
                 <div className={cn('flex-1 h-0.5', i < idx ? 'bg-green-500' : 'bg-gray-200')} />
               </React.Fragment>
             );
           })}
-          <div className={cn('w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold', visitStep === 'submitting' ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500')}>
-            {visitStep === 'submitting' ? <CheckCircle2 size={14} /> : 3}
+          <div className={cn('w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center text-[10px] md:text-xs font-bold', visitStep === 'submitting' ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500')}>
+            {visitStep === 'submitting' ? <CheckCircle2 size={12} /> : 3}
           </div>
         </div>
 
         {/* Step: Check-in */}
         {visitStep === 'checkin' && (
-          <div className="bg-white rounded-2xl border p-6 space-y-4">
-            <h3 className="font-bold text-lg flex items-center gap-2"><Navigation className="text-blue-600" size={20} />Check-in</h3>
+          <div className="bg-white rounded-2xl border p-4 md:p-6 space-y-4">
+            <h3 className="font-bold text-base md:text-lg flex items-center gap-2"><Navigation className="text-blue-600" size={18} />Check-in</h3>
             <p className="text-sm text-gray-500">Confirm your check-in time to start visiting</p>
             <div className="bg-blue-50 rounded-xl p-4 text-center">
               <p className="text-gray-500 text-xs uppercase font-bold">Checked in at</p>
-              <p className="text-2xl font-bold text-blue-600 mt-1">{checkinTime}</p>
+              <p className="text-xl md:text-2xl font-bold text-blue-600 mt-1">{checkinTime}</p>
             </div>
             <button onClick={() => setVisitStep('form')}
-              className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700">
+              className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 text-sm md:text-base">
               Start Visit
             </button>
           </div>
@@ -309,8 +309,8 @@ export default function DailyCallPlan() {
 
         {/* Step: Visit form */}
         {visitStep === 'form' && (
-          <div className="bg-white rounded-2xl border p-6 space-y-4">
-            <h3 className="font-bold text-lg flex items-center gap-2"><Edit3 className="text-blue-600" size={20} />Log Visit Details</h3>
+          <div className="bg-white rounded-2xl border p-4 md:p-6 space-y-4">
+            <h3 className="font-bold text-base md:text-lg flex items-center gap-2"><Edit3 className="text-blue-600" size={18} />Log Visit Details</h3>
 
             <div>
               <label className="text-xs font-bold text-gray-600">Products Detailed</label>
@@ -343,7 +343,7 @@ export default function DailyCallPlan() {
               </p>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className="text-xs font-bold text-gray-600">Order Value (₹)</label>
                 <input type="number" min={0} className="w-full mt-1 p-3 border rounded-xl text-sm"
@@ -373,12 +373,12 @@ export default function DailyCallPlan() {
 
             <div className="flex gap-3 pt-2">
               <button onClick={() => setVisitStep('checkin')}
-                className="flex-1 py-3 bg-white border-2 border-gray-200 text-gray-700 rounded-xl font-bold hover:bg-gray-50 hover:border-gray-300 transition-colors">
+                className="flex-1 py-3 bg-white border-2 border-gray-200 text-gray-700 rounded-xl font-bold hover:bg-gray-50 hover:border-gray-300 transition-colors text-sm md:text-base">
                 Back
               </button>
               <button onClick={completeVisit}
                 disabled={visitForm.conversationSummary.split(/[.!?]+/).filter((s: string) => s.trim().length > 5).length < 3}
-                className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors">
+                className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors text-sm md:text-base">
                 <CheckCircle2 size={18} /> Complete Visit
               </button>
             </div>
@@ -387,9 +387,9 @@ export default function DailyCallPlan() {
 
         {/* Step: Submitting */}
         {visitStep === 'submitting' && (
-          <div className="bg-white rounded-2xl border p-12 text-center">
-            <Loader2 className="w-10 h-10 animate-spin text-blue-600 mx-auto mb-4" />
-            <p className="font-bold text-gray-900">Completing visit...</p>
+          <div className="bg-white rounded-2xl border p-8 md:p-12 text-center">
+            <Loader2 className="w-8 h-8 md:w-10 md:h-10 animate-spin text-blue-600 mx-auto mb-4" />
+            <p className="font-bold text-gray-900 text-sm md:text-base">Completing visit...</p>
           </div>
         )}
       </div>
@@ -398,7 +398,7 @@ export default function DailyCallPlan() {
 
   // ===== MAIN VIEW =====
   return (
-    <div className="max-w-4xl mx-auto space-y-6 pb-8">
+    <div className="max-w-4xl mx-auto space-y-4 md:space-y-6 pb-8 px-4 md:px-0">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -441,7 +441,7 @@ export default function DailyCallPlan() {
 
       {/* Profile + Stats */}
       {mrProfile && (
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl p-6 text-white">
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl p-4 md:p-6 text-white">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center font-bold text-lg">
               {mrProfile.name.split(' ').map((n: string) => n[0]).join('')}
@@ -453,15 +453,15 @@ export default function DailyCallPlan() {
               </p>
             </div>
           </div>
-          <div className="grid grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 md:gap-3">
             {[
               { label: 'Planned', value: plans.length, color: 'text-white' },
               { label: 'Completed', value: completed.length, color: 'text-green-300' },
               { label: 'In Progress', value: inProgress.length, color: 'text-yellow-300' },
               { label: 'Compliance', value: `${compliance}%`, color: compliance >= 70 ? 'text-green-300' : compliance >= 40 ? 'text-yellow-300' : 'text-red-300' },
             ].map((s, i) => (
-              <div key={i} className="bg-white/10 rounded-xl p-3 text-center">
-                <p className={cn('text-xl font-bold', s.color)}>{s.value}</p>
+              <div key={i} className="bg-white/10 rounded-xl p-2 md:p-3 text-center">
+                <p className={cn('text-lg md:text-xl font-bold', s.color)}>{s.value}</p>
                 <p className="text-[10px] uppercase font-bold text-blue-200">{s.label}</p>
               </div>
             ))}
@@ -471,7 +471,7 @@ export default function DailyCallPlan() {
 
       {/* Quick stats when no profile */}
       {!mrProfile && (
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 md:gap-3">
           {[
             { label: 'Planned', value: plans.length, bg: 'bg-blue-50', color: 'text-blue-600' },
             { label: 'Completed', value: completed.length, bg: 'bg-green-50', color: 'text-green-600' },

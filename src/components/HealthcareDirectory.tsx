@@ -51,23 +51,12 @@ export default function HealthcareDirectory() {
 
   const { user } = useAuth();
 
-  // Auto-set territory for MR users
+  // Reset territory filter when logged out
   useEffect(() => {
-    if (user?.role === 'mr' && user.territory) {
-      setSelectedTerritory(user.territory);
-    } else if (!user) {
-      // Reset when logged out
+    if (!user) {
       setSelectedTerritory('all');
     }
   }, [user]);
-
-  // Refresh data when user territory changes (e.g., after admin updates MR territory)
-  useEffect(() => {
-    if (user?.role === 'mr' && user.territory) {
-      console.log(`[HealthcareDirectory] User territory changed to: ${user.territory}, refreshing data`);
-      fetchAllData();
-    }
-  }, [user?.territory]);
 
   const resetAddForm = () => { setFormData({}); setFormErrors({}); setIsSubmitting(false); };
 
@@ -255,6 +244,8 @@ export default function HealthcareDirectory() {
   };
 
   const fetchAllData = () => {
+    const currentUser = user; // capture at call time
+    console.log('[HCD] fetchAllData → user:', currentUser?.name, 'role:', currentUser?.role, 'mr_id:', currentUser?.mr_id);
     setLoading(true);
     Promise.all([
       api.doctors.getAll(),
@@ -262,10 +253,23 @@ export default function HealthcareDirectory() {
       api.hospitals.getAll(),
       api.mrs.getAll()
     ]).then(([d, p, h, m]) => {
+      console.log('[HCD] data loaded → doctors:', d.length, 'pharmacies:', p.length, 'hospitals:', h.length, 'mrs:', m.length);
       setDoctors(d);
       setPharmacies(p);
       setHospitals(h);
       setMrs(m);
+      setLoading(false);
+      // For MR users: use the MR's actual territory from the DB (live lookup) so that
+      // sub-area matching works correctly even if localStorage is stale.
+      if (currentUser?.role === 'mr' && currentUser.mr_id) {
+        const mrRecord = m.find((mr: any) => mr.id === currentUser.mr_id);
+        console.log('[HCD] MR record found:', mrRecord?.name, '→ territory:', mrRecord?.territory);
+        if (mrRecord?.territory) {
+          setSelectedTerritory(mrRecord.territory);
+        }
+      }
+    }).catch(err => {
+      console.error('[HCD] Failed to load data:', err);
       setLoading(false);
     });
   };
@@ -281,25 +285,49 @@ export default function HealthcareDirectory() {
     return () => window.removeEventListener('healthcare-data-updated', handleDataUpdate);
   }, []);
 
+  // Helper: extract sub-areas from a territory string like "Hyderabad East (Secunderabad, Tarnaka, Uppal)"
+  const extractSubAreas = (territory: string): string[] => {
+    const areas = [territory];
+    const match = territory.match(/\(([^)]+)\)/);
+    if (match) {
+      const subAreas = match[1].split(',').map(s => s.trim()).filter(Boolean);
+      areas.push(...subAreas);
+    }
+    return areas;
+  };
+
+  // Helper: check if an entity's territory matches a selected territory (supports sub-area matching)
+  const territoryMatches = (entityTerritory: string, selectedTerr: string): boolean => {
+    const t = (entityTerritory || '').trim();
+    if (!t) return false; // Skip entities with no territory
+    if (t === selectedTerr) return true;
+    const allowedAreas = extractSubAreas(selectedTerr);
+    return allowedAreas.some(area =>
+      t === area ||
+      t.toLowerCase().includes(area.toLowerCase()) ||
+      area.toLowerCase().includes(t.toLowerCase())
+    );
+  };
+
   const getFilteredData = () => {
     const term = searchTerm.toLowerCase();
     
     const filteredDoctors = doctors.filter(d => 
-      d.name.toLowerCase().includes(term) || 
-      d.clinic.toLowerCase().includes(term) || 
-      d.specialty.toLowerCase().includes(term) ||
+      (d.name || '').toLowerCase().includes(term) || 
+      (d.clinic || '').toLowerCase().includes(term) || 
+      (d.specialty || '').toLowerCase().includes(term) ||
       (d.territory || d.area || '').toLowerCase().includes(term)
     ).map(d => ({ ...d, entityType: 'doctor' as const }));
 
     const filteredPharmacies = pharmacies.filter(p => 
-      p.name.toLowerCase().includes(term) || 
-      p.owner_name.toLowerCase().includes(term) ||
+      (p.name || '').toLowerCase().includes(term) || 
+      (p.owner_name || '').toLowerCase().includes(term) ||
       (p.territory || p.area || '').toLowerCase().includes(term)
     ).map(p => ({ ...p, entityType: 'pharmacy' as const }));
 
     const filteredHospitals = hospitals.filter(h => 
-      h.name.toLowerCase().includes(term) || 
-      h.type.toLowerCase().includes(term) ||
+      (h.name || '').toLowerCase().includes(term) || 
+      (h.type || '').toLowerCase().includes(term) ||
       (h.territory || h.area || '').toLowerCase().includes(term)
     ).map(h => ({ ...h, entityType: 'hospital' as const }));
     
@@ -310,7 +338,7 @@ export default function HealthcareDirectory() {
     else filtered = [...filteredDoctors, ...filteredHospitals, ...filteredPharmacies];
 
     if (selectedTerritory !== 'all') {
-      filtered = filtered.filter(item => (item.territory || item.area) === selectedTerritory);
+      filtered = filtered.filter(item => territoryMatches(item.territory || item.area || '', selectedTerritory));
     }
 
     if (selectedTier !== 'all') {
@@ -331,7 +359,9 @@ export default function HealthcareDirectory() {
   const territories = Array.from(new Set([
     ...doctors.map(d => d.territory || d.area),
     ...pharmacies.map(p => p.territory || p.area),
-    ...hospitals.map(h => h.territory || h.area)
+    ...hospitals.map(h => h.territory || h.area),
+    // Include MR-assigned territories so the dropdown shows the MR's territory even if no entities yet
+    ...(user?.role === 'mr' && user.mr_id ? mrs.filter((mr: any) => mr.id === user.mr_id).map((mr: any) => mr.territory) : [])
   ].filter(Boolean))).sort();
 
   const groupedByTerritory = data.reduce((acc: Record<string, Record<string, any[]>>, item: any) => {
@@ -357,13 +387,124 @@ export default function HealthcareDirectory() {
   };
 
   const renderTableView = (territory: string) => {
-    const territoryItems = data.filter(item => (item.territory || item.area) === territory);
+    const territoryItems = data.filter(item => territoryMatches(item.territory || item.area || '', territory));
     const territoryDoctors = territoryItems.filter(i => i.entityType === 'doctor');
     const territoryPharmacies = territoryItems.filter(i => i.entityType === 'pharmacy');
     const territoryHospitals = territoryItems.filter(i => i.entityType === 'hospital');
 
     let globalIndex = 1;
 
+    // ── Pharmacy-specific table view ────────────────────────────────────────
+    if (type === 'pharmacy') {
+      return (
+        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-emerald-900 text-white">
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider border-r border-emerald-700 w-12 text-center">#</th>
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider border-r border-emerald-700">Pharmacy / Medical Hall</th>
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider border-r border-emerald-700">Owner / Proprietor</th>
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider border-r border-emerald-700">Type</th>
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider border-r border-emerald-700">Territory</th>
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider border-r border-emerald-700">Contact</th>
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider border-r border-emerald-700">Tier</th>
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider border-r border-emerald-700">MR Visit Window</th>
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider">AI Schedule</th>
+              </tr>
+            </thead>
+            <tbody>
+              {territoryPharmacies.length === 0 ? (
+                <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400 italic text-sm">No pharmacies in this territory</td></tr>
+              ) : territoryPharmacies.map((pharmacy: any) => (
+                <tr key={pharmacy.id} className="border-b border-slate-100 hover:bg-emerald-50/30 transition-colors text-xs">
+                  <td className="px-4 py-3 text-center text-slate-400 font-medium border-r border-slate-100">{globalIndex++}</td>
+                  <td className="px-4 py-3 font-bold text-emerald-700 border-r border-slate-100">{pharmacy.name}</td>
+                  <td className="px-4 py-3 text-slate-700 border-r border-slate-100">{pharmacy.owner_name || '—'}</td>
+                  <td className="px-4 py-3 text-slate-600 border-r border-slate-100">{pharmacy.type || 'Pharmacy'}</td>
+                  <td className="px-4 py-3 text-slate-600 border-r border-slate-100">{pharmacy.territory || pharmacy.area || '—'}</td>
+                  <td className="px-4 py-3 text-slate-600 border-r border-slate-100">{pharmacy.contact || pharmacy.phone || '—'}</td>
+                  <td className="px-4 py-3 border-r border-slate-100"><span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full font-bold text-[10px]">Tier {pharmacy.tier || 'B'}</span></td>
+                  <td className="px-4 py-3 font-bold text-emerald-600 border-r border-slate-100">{pharmacy.mr_visit_window || 'N/A'}</td>
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={() => handleSchedule(pharmacy)}
+                      disabled={isScheduling && schedulingItem?.id === pharmacy.id}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-all font-bold text-[10px] shadow-sm shadow-emerald-600/20 group/btn disabled:opacity-50"
+                    >
+                      {isScheduling && schedulingItem?.id === pharmacy.id ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <Zap size={12} className="transition-transform group-hover/btn:scale-110" fill="currentColor" />
+                      )}
+                      {isScheduling && schedulingItem?.id === pharmacy.id ? 'Scheduling...' : 'AI Schedule'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    // ── Hospital-specific table view ─────────────────────────────────────────
+    if (type === 'hospital') {
+      return (
+        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-purple-900 text-white">
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider border-r border-purple-700 w-12 text-center">#</th>
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider border-r border-purple-700">Hospital / Clinic Name</th>
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider border-r border-purple-700">Type</th>
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider border-r border-purple-700">Beds</th>
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider border-r border-purple-700">Territory</th>
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider border-r border-purple-700">Phone</th>
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider border-r border-purple-700">Address</th>
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider border-r border-purple-700">Doctors</th>
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider border-r border-purple-700">Tier</th>
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-wider">AI Schedule</th>
+              </tr>
+            </thead>
+            <tbody>
+              {territoryHospitals.length === 0 ? (
+                <tr><td colSpan={10} className="px-4 py-8 text-center text-slate-400 italic text-sm">No hospitals in this territory</td></tr>
+              ) : territoryHospitals.map((hospital: any) => (
+                <tr key={hospital.id} className="border-b border-slate-100 hover:bg-purple-50/30 transition-colors text-xs">
+                  <td className="px-4 py-3 text-center text-slate-400 font-medium border-r border-slate-100">{globalIndex++}</td>
+                  <td className="px-4 py-3 font-bold text-purple-700 border-r border-slate-100">{hospital.name}</td>
+                  <td className="px-4 py-3 text-slate-600 border-r border-slate-100">{hospital.type || 'Hospital'}</td>
+                  <td className="px-4 py-3 text-slate-600 text-center border-r border-slate-100">{hospital.beds || '—'}</td>
+                  <td className="px-4 py-3 text-slate-600 border-r border-slate-100">{hospital.territory || hospital.area || '—'}</td>
+                  <td className="px-4 py-3 text-slate-600 border-r border-slate-100">{hospital.phone || hospital.contact || '—'}</td>
+                  <td className="px-4 py-3 text-slate-500 border-r border-slate-100 max-w-[160px] truncate">{hospital.address || '—'}</td>
+                  <td className="px-4 py-3 text-center border-r border-slate-100">
+                    <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full font-bold text-[10px]">{getDoctorCountForHospital(hospital.id)} Doctors</span>
+                  </td>
+                  <td className="px-4 py-3 border-r border-slate-100"><span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full font-bold text-[10px]">Tier {hospital.tier || 'B'}</span></td>
+                  <td className="px-4 py-3">
+                    <button
+                      onClick={() => handleSchedule(hospital)}
+                      disabled={isScheduling && schedulingItem?.id === hospital.id}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all font-bold text-[10px] shadow-sm shadow-purple-600/20 group/btn disabled:opacity-50"
+                    >
+                      {isScheduling && schedulingItem?.id === hospital.id ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <Zap size={12} className="transition-transform group-hover/btn:scale-110" fill="currentColor" />
+                      )}
+                      {isScheduling && schedulingItem?.id === hospital.id ? 'Scheduling...' : 'AI Schedule'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+
+    // ── Doctor-Hospital hierarchy table (All Entities / Doctors tab) ─────────
     // Grouping logic
     const hospitalGroups: Record<string, { hospital?: Hospital, doctors: any[], name: string }> = {};
     
@@ -532,7 +673,7 @@ export default function HealthcareDirectory() {
   };
 
   return (
-    <div className="p-8 space-y-8">
+    <div className="p-4 md:p-8 space-y-6 md:space-y-8">
       {/* Toast Notification */}
       <AnimatePresence>
         {showToast && (
@@ -559,26 +700,27 @@ export default function HealthcareDirectory() {
         )}
       </AnimatePresence>
 
-      <header className="flex justify-between items-center">
+      <header className="flex flex-col md:flex-row gap-4 md:gap-0 justify-between items-start md:items-center">
         <div>
-          <h2 className="text-3xl font-bold text-slate-900">Healthcare Directory</h2>
-          <p className="text-slate-500 mt-1">Comprehensive database of healthcare providers and partners.</p>
+          <h2 className="text-2xl md:text-3xl font-bold text-slate-900">Healthcare Directory</h2>
+          <p className="text-slate-500 mt-1 text-sm md:text-base">Comprehensive database of healthcare providers and partners.</p>
         </div>
         <button
           onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20"
+          className="flex items-center gap-2 px-4 md:px-6 py-2.5 md:py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20 text-sm md:text-base w-full md:w-auto justify-center"
         >
-          <Plus size={20} />
-          Add New Entry
+          <Plus size={18} />
+          <span className="hidden sm:inline">Add New Entry</span>
+          <span className="sm:hidden">Add</span>
         </button>
       </header>
 
       {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-2xl border border-blue-200 shadow-sm hover:shadow-md transition-shadow"
+          className="bg-gradient-to-br from-blue-50 to-blue-100 p-4 md:p-6 rounded-2xl border border-blue-200 shadow-sm hover:shadow-md transition-shadow"
         >
           <div className="flex items-center justify-between mb-3">
             <Stethoscope className="text-blue-600" size={24} />
@@ -593,7 +735,7 @@ export default function HealthcareDirectory() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="bg-gradient-to-br from-purple-50 to-purple-100 p-6 rounded-2xl border border-purple-200 shadow-sm hover:shadow-md transition-shadow"
+          className="bg-gradient-to-br from-purple-50 to-purple-100 p-4 md:p-6 rounded-2xl border border-purple-200 shadow-sm hover:shadow-md transition-shadow"
         >
           <div className="flex items-center justify-between mb-3">
             <Pill className="text-purple-600" size={24} />
@@ -608,7 +750,7 @@ export default function HealthcareDirectory() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="bg-gradient-to-br from-red-50 to-red-100 p-6 rounded-2xl border border-red-200 shadow-sm hover:shadow-md transition-shadow"
+          className="bg-gradient-to-br from-red-50 to-red-100 p-4 md:p-6 rounded-2xl border border-red-200 shadow-sm hover:shadow-md transition-shadow"
         >
           <div className="flex items-center justify-between mb-3">
             <Building2 className="text-red-600" size={24} />
@@ -623,7 +765,7 @@ export default function HealthcareDirectory() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="bg-gradient-to-br from-cyan-50 to-cyan-100 p-6 rounded-2xl border border-cyan-200 shadow-sm hover:shadow-md transition-shadow"
+          className="bg-gradient-to-br from-cyan-50 to-cyan-100 p-4 md:p-6 rounded-2xl border border-cyan-200 shadow-sm hover:shadow-md transition-shadow"
         >
           <div className="flex items-center justify-between mb-3">
             <User className="text-cyan-600" size={24} />
@@ -638,22 +780,22 @@ export default function HealthcareDirectory() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="bg-gradient-to-br from-slate-50 to-slate-100 p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow"
+          className="bg-gradient-to-br from-slate-50 to-slate-100 p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-shadow"
         >
           <div className="flex items-center justify-between mb-3">
             <Calendar className="text-slate-600" size={24} />
-            <span className="text-xs font-semibold text-slate-700 bg-slate-200 px-3 py-1 rounded-full">Updated</span>
+            <span className="text-[10px] md:text-xs font-semibold text-slate-700 bg-slate-200 px-2 md:px-3 py-1 rounded-full">Updated</span>
           </div>
-          <p className="text-slate-600 text-sm font-medium">Last Updated</p>
-          <p className="text-2xl font-bold text-slate-900 mt-2">Mar 31, 2026</p>
-          <p className="text-xs text-slate-500 mt-3">Real-time sync enabled</p>
+          <p className="text-slate-600 text-xs md:text-sm font-medium">Last Updated</p>
+          <p className="text-lg md:text-2xl font-bold text-slate-900 mt-2">Mar 31, 2026</p>
+          <p className="text-[10px] md:text-xs text-slate-500 mt-2 md:mt-3">Real-time sync enabled</p>
         </motion.div>
       </div>
 
       {/* Entity Type Selector */}
-      <div className="flex p-1 bg-slate-100 rounded-2xl w-fit overflow-x-auto max-w-full">
+      <div className="flex p-1 bg-slate-100 rounded-2xl w-full md:w-fit overflow-x-auto max-w-full">
         {[
-          { id: 'all', label: 'All Entities', icon: Building2 },
+          { id: 'all', label: 'All', icon: Building2 },
           { id: 'doctor', label: 'Doctors', icon: Stethoscope },
           { id: 'pharmacy', label: 'Pharmacies', icon: Pill },
           { id: 'hospital', label: 'Hospitals', icon: Building2 },
@@ -662,28 +804,28 @@ export default function HealthcareDirectory() {
             key={item.id}
             onClick={() => setType(item.id as EntityType)}
             className={cn(
-              "flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all whitespace-nowrap",
+              "flex items-center gap-1.5 md:gap-2 px-3 md:px-6 py-2 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap flex-1 md:flex-initial justify-center",
               type === item.id 
                 ? "bg-white text-blue-600 shadow-sm" 
                 : "text-slate-500 hover:text-slate-700"
             )}
           >
-            <item.icon size={18} />
-            {item.label}
+            <item.icon size={16} />
+            <span className="hidden sm:inline">{item.label}</span>
           </button>
         ))}
       </div>
 
       {/* Filters & Search */}
-      <div className="flex flex-col md:flex-row gap-4">
+      <div className="flex flex-col md:flex-row gap-3 md:gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
           <input 
             type="search"
             id="healthcare-search-input"
             data-search-input="healthcare"
-            placeholder={`Search ${type === 'all' ? 'entities' : type + 's'} by name, location or specialty...`} 
-            className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+            placeholder={`Search ${type === 'all' ? 'entities' : type + 's'}...`} 
+            className="w-full pl-10 md:pl-12 pr-4 py-2.5 md:py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm md:text-base"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -704,15 +846,15 @@ export default function HealthcareDirectory() {
 
           {/* Territory Filter - Admin/Manager only. MRs see their territory as a banner */}
           {user?.role === 'mr' && user.territory ? (
-            <div className="px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-800 font-medium flex items-center gap-2">
-              <MapPin size={16} />
-              <span>{user.territory}</span>
+            <div className="px-3 md:px-4 py-2.5 md:py-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-800 font-medium flex items-center gap-2 text-xs md:text-sm">
+              <MapPin size={14} />
+              <span className="truncate">{user.territory}</span>
             </div>
           ) : (
             <select
               value={selectedTerritory}
               onChange={(e) => setSelectedTerritory(e.target.value)}
-              className="px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-600 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none min-w-[160px] cursor-pointer hover:border-slate-300 transition-colors"
+              className="px-3 md:px-4 py-2.5 md:py-3 bg-white border border-slate-200 rounded-xl text-slate-600 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none min-w-[120px] md:min-w-[160px] cursor-pointer hover:border-slate-300 transition-colors text-xs md:text-sm"
             >
               <option value="all">All Territories</option>
               {territories.map(t => (
@@ -724,7 +866,7 @@ export default function HealthcareDirectory() {
           <select
             value={selectedTier}
             onChange={(e) => setSelectedTier(e.target.value)}
-            className="px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-600 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none min-w-[120px] cursor-pointer hover:border-slate-300 transition-colors"
+            className="px-3 md:px-4 py-2.5 md:py-3 bg-white border border-slate-200 rounded-xl text-slate-600 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none min-w-[100px] md:min-w-[120px] cursor-pointer hover:border-slate-300 transition-colors text-xs md:text-sm"
           >
             <option value="all">All Tiers</option>
             <option value="A">Tier A</option>
@@ -736,32 +878,32 @@ export default function HealthcareDirectory() {
             <button 
               onClick={() => setViewMode('grid')}
               className={cn(
-                "p-2 rounded-lg transition-all",
+                "p-2 md:p-2.5 rounded-lg transition-all",
                 viewMode === 'grid' ? "bg-white text-blue-600 shadow-sm" : "text-slate-500"
               )}
               title="Grid View"
             >
-              <LayoutGrid size={20} />
+              <LayoutGrid size={18} />
             </button>
             <button 
               onClick={() => setViewMode('list')}
               className={cn(
-                "p-2 rounded-lg transition-all",
+                "p-2 md:p-2.5 rounded-lg transition-all",
                 viewMode === 'list' ? "bg-white text-blue-600 shadow-sm" : "text-slate-500"
               )}
               title="List View"
             >
-              <ListIcon size={20} />
+              <ListIcon size={18} />
             </button>
             <button 
               onClick={() => setViewMode('table')}
               className={cn(
-                "p-2 rounded-lg transition-all",
+                "p-2 md:p-2.5 rounded-lg transition-all hidden md:block",
                 viewMode === 'table' ? "bg-white text-blue-600 shadow-sm" : "text-slate-500"
               )}
-              title="Table View"
+              title="Table View (Desktop Only)"
             >
-              <TableIcon size={20} />
+              <TableIcon size={18} />
             </button>
           </div>
         </div>
@@ -772,7 +914,7 @@ export default function HealthcareDirectory() {
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
         </div>
       ) : (
-        <div className="space-y-12">
+        <div className="space-y-8 md:space-y-12">
           {sortedTerritories.length === 0 ? (
             <div className="text-center py-20 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
               <p className="text-slate-400 font-medium">No entities found matching your criteria.</p>
@@ -788,9 +930,18 @@ export default function HealthcareDirectory() {
                   <div className="h-px flex-1 bg-slate-200"></div>
                 </div>
 
-                <div className="space-y-10 pl-4 border-l-2 border-slate-100">
+                <div className="space-y-10 pl-0 md:pl-4 border-l-0 md:border-l-2 border-slate-100">
                   {viewMode === 'table' ? (
-                    renderTableView(territory)
+                    <>
+                      {/* Hide table on mobile, show message instead */}
+                      <div className="hidden md:block">
+                        {renderTableView(territory)}
+                      </div>
+                      <div className="md:hidden text-center py-8 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
+                        <p className="text-slate-500 font-medium text-sm">Table view not available on mobile</p>
+                        <p className="text-slate-400 text-xs mt-1">Switch to Grid or List view using the buttons above</p>
+                      </div>
+                    </>
                   ) : (
                     entityOrder.map((eType) => {
                       const items = groupedByTerritory[territory][eType];
@@ -812,7 +963,7 @@ export default function HealthcareDirectory() {
 
                           <div className={cn(
                             viewMode === 'grid' 
-                              ? "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6" 
+                              ? "grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6" 
                               : "space-y-3"
                           )}>
                             <AnimatePresence mode="popLayout">
@@ -826,7 +977,7 @@ export default function HealthcareDirectory() {
                                   transition={{ duration: 0.2 }}
                                   className={cn(
                                     "bg-white border border-slate-100 shadow-sm hover:shadow-md transition-all group relative overflow-hidden",
-                                    viewMode === 'grid' ? "p-6 rounded-2xl" : "p-4 rounded-xl flex items-center gap-4"
+                                    viewMode === 'grid' ? "p-4 md:p-6 rounded-2xl" : "p-3 md:p-4 rounded-xl flex items-center gap-3 md:gap-4"
                                   )}
                                 >
                                 {/* Type Indicator Bar (Grid Only) */}
@@ -841,14 +992,14 @@ export default function HealthcareDirectory() {
 
                                 <div className={cn(
                                   "rounded-xl flex items-center justify-center text-white shadow-lg shrink-0",
-                                  viewMode === 'grid' ? "w-12 h-12 mb-4" : "w-10 h-10",
+                                  viewMode === 'grid' ? "w-10 h-10 md:w-12 md:h-12 mb-3 md:mb-4" : "w-9 h-9 md:w-10 md:h-10",
                                   item.entityType === 'doctor' ? "bg-blue-500 shadow-blue-500/20" : 
                                   item.entityType === 'pharmacy' ? "bg-emerald-500 shadow-emerald-500/20" : 
                                   "bg-purple-500 shadow-purple-500/20"
                                 )}>
-                                  {item.entityType === 'doctor' ? <Stethoscope size={viewMode === 'grid' ? 24 : 20} /> : 
-                                   item.entityType === 'pharmacy' ? <Pill size={viewMode === 'grid' ? 24 : 20} /> : 
-                                   <Building2 size={viewMode === 'grid' ? 24 : 20} />}
+                                  {item.entityType === 'doctor' ? <Stethoscope size={viewMode === 'grid' ? 20 : 18} /> : 
+                                   item.entityType === 'pharmacy' ? <Pill size={viewMode === 'grid' ? 20 : 18} /> : 
+                                   <Building2 size={viewMode === 'grid' ? 20 : 18} />}
                                 </div>
 
                                 <div className="flex-1 min-w-0">
@@ -856,7 +1007,7 @@ export default function HealthcareDirectory() {
                                     <div className="flex items-center gap-2 min-w-0">
                                       <h3 className={cn(
                                         "font-bold text-slate-900 group-hover:text-blue-600 transition-colors truncate",
-                                        viewMode === 'grid' ? "text-lg" : "text-base"
+                                        viewMode === 'grid' ? "text-base md:text-lg" : "text-sm md:text-base"
                                       )}>{item.name}</h3>
                                       {viewMode === 'list' && (
                                         <span className={cn(
@@ -889,7 +1040,7 @@ export default function HealthcareDirectory() {
                                   </div>
 
                                   <div className="flex items-center gap-2">
-                                    <p className="text-sm font-medium text-slate-500 truncate">
+                                    <p className="text-xs md:text-sm font-medium text-slate-500 truncate">
                                       {item.entityType === 'doctor' ? item.clinic : item.entityType === 'pharmacy' ? (item.type || item.owner_name) : item.type}
                                     </p>
                                     {viewMode === 'grid' && (

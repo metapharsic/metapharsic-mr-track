@@ -15,6 +15,7 @@ const HealthcareDirectory = lazy(() => import('./components/HealthcareDirectory'
 const SalesTracking = lazy(() => import('./components/SalesTracking'));
 const ExpenseManager = lazy(() => import('./components/ExpenseManager'));
 const DailyCallPlan = lazy(() => import('./components/DailyCallPlan'));
+const VisitSchedule = lazy(() => import('./components/VisitSchedule'));
 const LeadsManagement = lazy(() => import('./components/LeadsManagement'));
 const MRDashboard = lazy(() => import('./components/MRDashboard'));
 const DataManagement = lazy(() => import('./components/DataManagement'));
@@ -165,14 +166,14 @@ function AppContent() {
           <Sidebar onOpenSearch={() => setSearchOpen(true)} />
         </Suspense>
         
-        <main className="flex-1 ml-64 min-h-screen">
+        <main className="flex-1 min-h-screen ml-0 lg:ml-64">
           {/* Top Bar */}
           <Suspense fallback={<div className="h-16 bg-white border-b border-gray-200" />}>
             <TopBar />
           </Suspense>
           
           {/* Page Content */}
-          <div className="p-8">
+          <div className="p-4 md:p-6 lg:p-8">
             <Suspense fallback={<LoadingFallback />}>
               <Routes>
               <Route path="/" element={<ProtectedRoute><DynamicDashboard /></ProtectedRoute>} />
@@ -183,6 +184,7 @@ function AppContent() {
               <Route path="/sales" element={<ProtectedRoute requiredPermission="sales.view"><SalesTracking /></ProtectedRoute>} />
               <Route path="/expenses" element={<ProtectedRoute requiredPermission="expenses.view"><ExpenseManager /></ProtectedRoute>} />
               <Route path="/schedule" element={<ProtectedRoute requiredPermission="schedule.view"><DailyCallPlan /></ProtectedRoute>} />
+              <Route path="/visit-schedule" element={<ProtectedRoute requiredPermission="schedule.view"><VisitSchedule /></ProtectedRoute>} />
               <Route path="/leads" element={<ProtectedRoute requiredPermission="leads.view"><LeadsManagement /></ProtectedRoute>} />
               <Route path="/mr-dashboard" element={<ProtectedRoute requiredPermission="mr-dashboard.view"><MRDashboard /></ProtectedRoute>} />
               <Route path="/data-management" element={<ProtectedRoute requiredPermission="data.view"><DataManagement /></ProtectedRoute>} />
@@ -221,14 +223,56 @@ interface Props {
   onError: (error: string) => void;
 }
 
-class ErrorBoundary extends React.Component<Props> {
+interface ErrorBoundaryState {
+  hasError: boolean;
+  errorMessage: string;
+}
+
+class ErrorBoundary extends React.Component<Props, ErrorBoundaryState> {
+  constructor(props: Props) {
+    super(props);
+    this.state = { hasError: false, errorMessage: '' };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, errorMessage: error.message };
+  }
+
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    console.error('Error Boundary:', error);
+    console.error('Error Boundary caught:', error.message);
+    console.error('Component stack:', info.componentStack);
     const errorMsg = `${error.message}\n\n${info.componentStack}`;
     this.props.onError(errorMsg);
   }
 
   render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          padding: '40px',
+          textAlign: 'center',
+          color: '#d32f2f',
+          fontFamily: 'Arial, sans-serif',
+          backgroundColor: '#ffebee',
+          minHeight: '200px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexDirection: 'column',
+          borderRadius: '8px',
+          margin: '20px'
+        }}>
+          <h2 style={{ margin: '0 0 20px 0' }}>⚠️ Page Error</h2>
+          <p style={{ margin: '0 0 10px 0', fontSize: '14px' }}>{this.state.errorMessage}</p>
+          <button
+            onClick={() => { this.setState({ hasError: false, errorMessage: '' }); window.location.reload(); }}
+            style={{ marginTop: '15px', padding: '8px 16px', backgroundColor: '#d32f2f', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+          >
+            Reload Page
+          </button>
+        </div>
+      );
+    }
     return this.props.children;
   }
 }

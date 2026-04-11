@@ -53,7 +53,7 @@ export const api = {
   mrs: {
     getAll: () => {
       const headers = getAuthHeaders();
-      return fetch(`${API_BASE}/mrs`, { headers }).then(handleResponse);
+      return fetch(`${API_BASE}/mrs`, { headers }).then(handleResponse<MR[]>);
     },
     create: (mr: Omit<MR, 'id'>) => {
       const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
@@ -69,19 +69,19 @@ export const api = {
         method: 'PATCH',
         headers,
         body: JSON.stringify(mr)
-      }).then(handleResponse);
+      }).then(handleResponse<MR>);
     },
   },
   products: {
     getAll: () => {
       const headers = getAuthHeaders();
-      return fetch(`${API_BASE}/products`, { headers }).then(handleResponse);
+      return fetch(`${API_BASE}/products`, { headers }).then(handleResponse<Product[]>);
     },
   },
   doctors: {
     getAll: () => {
       const headers = getAuthHeaders();
-      return fetch(`${API_BASE}/doctors`, { headers }).then(handleResponse);
+      return fetch(`${API_BASE}/doctors`, { headers }).then(handleResponse<Doctor[]>);
     },
     create: (doctor: Partial<Doctor>) => {
       const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
@@ -95,7 +95,7 @@ export const api = {
   pharmacies: {
     getAll: () => {
       const headers = getAuthHeaders();
-      return fetch(`${API_BASE}/pharmacies`, { headers }).then(handleResponse);
+      return fetch(`${API_BASE}/pharmacies`, { headers }).then(handleResponse<Pharmacy[]>);
     },
     create: (pharmacy: Partial<Pharmacy>) => {
       const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
@@ -109,7 +109,7 @@ export const api = {
   hospitals: {
     getAll: () => {
       const headers = getAuthHeaders();
-      return fetch(`${API_BASE}/hospitals`, { headers }).then(handleResponse);
+      return fetch(`${API_BASE}/hospitals`, { headers }).then(handleResponse<Hospital[]>);
     },
     create: (hospital: Partial<Hospital>) => {
       const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
@@ -123,13 +123,13 @@ export const api = {
   targets: {
     getAll: () => {
       const headers = getAuthHeaders();
-      return fetch(`${API_BASE}/targets`, { headers }).then(handleResponse);
+      return fetch(`${API_BASE}/targets`, { headers }).then(handleResponse<Target[]>);
     },
   },
   expenses: {
     getAll: () => {
       const headers = getAuthHeaders();
-      return fetch(`${API_BASE}/expenses`, { headers }).then(handleResponse);
+      return fetch(`${API_BASE}/expenses`, { headers }).then(handleResponse<Expense[]>);
     },
     create: (expense: Partial<Expense>) => {
       const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
@@ -143,7 +143,7 @@ export const api = {
   sales: {
     getAll: () => {
       const headers = getAuthHeaders();
-      return fetch(`${API_BASE}/sales`, { headers }).then(handleResponse);
+      return fetch(`${API_BASE}/sales`, { headers }).then(handleResponse<Sale[]>);
     },
     create: (sale: Partial<Sale>) => {
       const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
@@ -161,15 +161,15 @@ export const api = {
   visits: {
     getAll: () => {
       const headers = getAuthHeaders();
-      return fetch(`${API_BASE}/doctor-visits`, { headers }).then(handleResponse);
+      return fetch(`${API_BASE}/doctor-visits`, { headers }).then(handleResponse<Visit[]>);
     },
     getSchedules: () => {
       const headers = getAuthHeaders();
-      return fetch(`${API_BASE}/visit-schedules`, { headers }).then(handleResponse);
+      return fetch(`${API_BASE}/visit-schedules`, { headers }).then(handleResponse<any[]>);
     },
     getSchedulesByMr: (mrId: number) => {
       const headers = getAuthHeaders();
-      return fetch(`${API_BASE}/visit-schedules?mr_id=${mrId}`, { headers }).then(handleResponse);
+      return fetch(`${API_BASE}/visit-schedules?mr_id=${mrId}`, { headers }).then(handleResponse<any[]>);
     },
     createSchedule: (schedule: any) => {
       const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
@@ -187,7 +187,7 @@ export const api = {
   leads: {
     getAll: () => {
       const headers = getAuthHeaders();
-      return fetch(`${API_BASE}/leads`, { headers }).then(handleResponse);
+      return fetch(`${API_BASE}/leads`, { headers }).then(handleResponse<Lead[]>);
     },
     create: (lead: Partial<Lead>) => {
       const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
@@ -203,14 +203,14 @@ export const api = {
         method: 'PATCH',
         headers,
         body: JSON.stringify(lead)
-      }).then(handleResponse);
+      }).then(handleResponse<Lead>);
     },
   },
   attendance: {
     getAll: (mrId?: number) => {
       const url = mrId ? `${API_BASE}/attendance?mr_id=${mrId}` : `${API_BASE}/attendance`;
       const headers = getAuthHeaders();
-      return fetch(url, { headers }).then(handleResponse);
+      return fetch(url, { headers }).then(handleResponse<Attendance[]>);
     }
   },
   activities: {
@@ -221,18 +221,18 @@ export const api = {
       if (date) params.append('date', date);
       if (params.toString()) url += `?${params.toString()}`;
       const headers = getAuthHeaders();
-      return fetch(url, { headers }).then(handleResponse);
+      return fetch(url, { headers }).then(handleResponse<Activity[]>);
     }
   },
   recordings: {
     getAll: (mrId?: number) => {
       const url = mrId ? `${API_BASE}/visit-recordings?mr_id=${mrId}` : `${API_BASE}/visit-recordings`;
       const headers = getAuthHeaders();
-      return fetch(url, { headers }).then(handleResponse);
+      return fetch(url, { headers }).then(handleResponse<any[]>);
     },
     getByEntity: (entityName: string) => {
       const headers = getAuthHeaders();
-      return fetch(`${API_BASE}/visit-recordings?entity=${encodeURIComponent(entityName)}`, { headers }).then(handleResponse);
+      return fetch(`${API_BASE}/visit-recordings?entity=${encodeURIComponent(entityName)}`, { headers }).then(handleResponse<any[]>);
     },
     create: (recording: Partial<VisitRecordingData>) => {
       const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
@@ -246,7 +246,7 @@ export const api = {
   approvals: {
     getAll: () => {
       const headers = getAuthHeaders();
-      return fetch(`${API_BASE}/approval-requests`, { headers }).then(handleResponse);
+      return fetch(`${API_BASE}/approval-requests`, { headers }).then(handleResponse<any[]>);
     },
     create: (request: any) => {
       const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
@@ -268,7 +268,7 @@ export const api = {
   credits: {
     getAll: () => {
       const headers = getAuthHeaders();
-      return fetch(`${API_BASE}/entity-credits`, { headers }).then(handleResponse);
+      return fetch(`${API_BASE}/entity-credits`, { headers }).then(handleResponse<any[]>);
     },
     update: (id: number, updates: any) => {
       const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
@@ -282,7 +282,7 @@ export const api = {
   locations: {
     getAll: () => {
       const headers = getAuthHeaders();
-      return fetch(`${API_BASE}/mr-locations`, { headers }).then(handleResponse);
+      return fetch(`${API_BASE}/mr-locations`, { headers }).then(handleResponse<any[]>);
     },
     update: (loc: { mr_id: number; lat: number; lng: number; activity_type?: string }) => {
       const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
@@ -297,7 +297,7 @@ export const api = {
     getAll: (mrId?: number) => {
       const url = mrId ? `${API_BASE}/notifications?mr_id=${mrId}` : `${API_BASE}/notifications`;
       const headers = getAuthHeaders();
-      return fetch(url, { headers }).then(handleResponse);
+      return fetch(url, { headers }).then(handleResponse<any[]>);
     },
     sendEmail: (to: string, subject: string, body: string, mrId?: number) => {
       const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
@@ -315,7 +315,7 @@ export const api = {
       if (entityName) params.append('entity_name', entityName);
       const url = `${API_BASE}/visit-records${params.toString() ? '?' + params.toString() : ''}`;
       const headers = getAuthHeaders();
-      return fetch(url, { headers }).then(handleResponse);
+      return fetch(url, { headers }).then(handleResponse<any[]>);
     },
     create: (record: any) => {
       const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
@@ -337,7 +337,7 @@ export const api = {
   missedVisits: {
     getAll: () => {
       const headers = getAuthHeaders();
-      return fetch(`${API_BASE}/missed-visits`, { headers }).then(handleResponse);
+      return fetch(`${API_BASE}/missed-visits`, { headers }).then(handleResponse<any[]>);
     },
   },
   dailySummaries: {
@@ -365,7 +365,7 @@ export const api = {
       if (date) params.append('date', date);
       if (params.toString()) url += `?${params.toString()}`;
       const headers = getAuthHeaders();
-      return fetch(url, { headers }).then(handleResponse);
+      return fetch(url, { headers }).then(handleResponse<any[]>);
     },
     complete: (id: number, outcome: any) => {
       const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };

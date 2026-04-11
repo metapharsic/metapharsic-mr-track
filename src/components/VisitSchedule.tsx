@@ -105,14 +105,24 @@ export default function VisitSchedule() {
     });
   };
 
-  const handleAutoAssign = () => {
-    if (!formEntityId) return;
+  const handleAutoAssign = (entityOverride?: any) => {
+    const entityId = entityOverride?.id || formEntityId;
+    if (!entityId) return;
     const allEntities = [...doctors, ...pharmacies, ...hospitals] as any[];
-    const entity = allEntities.find(e => e.id === formEntityId);
+    const entity = entityOverride || allEntities.find(e => e.id === entityId);
     if (entity) {
       const territory = entity.territory || entity.area;
-      const matchedMr = mrs.find(m => m.territory?.toLowerCase().includes(territory?.toLowerCase())) || mrs[0];
-      if (matchedMr) setFormMrId(matchedMr.id);
+      console.log('[VisitSchedule] Auto-assign: entity=', entity.name, 'territory=', territory);
+      console.log('[VisitSchedule] Available MRs:', mrs.map(m => ({ name: m.name, territory: m.territory })));
+      // Match: entity territory must be contained within the MR's territory string
+      const matchedMr = mrs.find(m => m.territory?.toLowerCase().includes(territory?.toLowerCase()));
+      if (matchedMr) {
+        console.log('[VisitSchedule] Auto-assigned MR:', matchedMr.name);
+        setFormMrId(matchedMr.id);
+      } else {
+        console.log('[VisitSchedule] No MR match found, using first MR:', mrs[0]?.name);
+        if (mrs.length > 0) setFormMrId(mrs[0].id);
+      }
     }
   };
 
@@ -156,9 +166,9 @@ export default function VisitSchedule() {
 
   const filteredEntities = (() => {
     const term = formEntitySearch.toLowerCase();
-    if (formEntityType === 'doctor') return doctors.filter(d => d.name.toLowerCase().includes(term) || d.clinic.toLowerCase().includes(term) || d.specialty.toLowerCase().includes(term));
-    if (formEntityType === 'chemist') return pharmacies.filter(p => p.name.toLowerCase().includes(term) || p.owner_name.toLowerCase().includes(term));
-    return hospitals.filter(h => h.name.toLowerCase().includes(term) || h.type.toLowerCase().includes(term));
+    if (formEntityType === 'doctor') return doctors.filter(d => (d.name || '').toLowerCase().includes(term) || (d.clinic || '').toLowerCase().includes(term) || (d.specialty || '').toLowerCase().includes(term));
+    if (formEntityType === 'chemist') return pharmacies.filter(p => (p.name || '').toLowerCase().includes(term) || (p.owner_name || '').toLowerCase().includes(term));
+    return hospitals.filter(h => (h.name || '').toLowerCase().includes(term) || (h.type || '').toLowerCase().includes(term));
   })();
 
   const todaySchedules = schedules.filter(s => s.scheduled_date === selectedDate);
@@ -510,7 +520,7 @@ export default function VisitSchedule() {
                       {filteredEntities.slice(0, 8).map((e: any) => (
                         <button
                           key={e.id}
-                          onClick={() => { setFormEntityId(e.id); handleAutoAssign(); }}
+                          onClick={() => { setFormEntityId(e.id); handleAutoAssign(e); }}
                           className={cn(
                             "w-full text-left px-3 py-2 rounded-lg text-xs transition-all",
                             formEntityId === e.id ? "bg-blue-100 border border-blue-200" : "bg-slate-50 hover:bg-slate-100 border border-transparent"
@@ -546,6 +556,11 @@ export default function VisitSchedule() {
                       <option key={mr.id} value={mr.id}>{mr.name} — {mr.territory}</option>
                     ))}
                   </select>
+                  {formEntityId && formMrId && (
+                    <p className="text-[10px] text-blue-600 mt-1 flex items-center gap-1">
+                      <CheckCircle2 size={10} />Auto-assigned based on territory match
+                    </p>
+                  )}
                 </div>
 
                 {/* Date & Time */}

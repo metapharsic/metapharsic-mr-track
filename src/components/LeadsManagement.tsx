@@ -45,7 +45,7 @@ export default function LeadsManagement() {
     ]).then(([l, m, v]) => {
       let filtered = l;
       if (user?.role === 'mr') {
-        filtered = l.filter((lead: Lead) => lead.mr_id === user.mr_id || lead.assigned_mr_id === user.mr_id || !lead.assigned_mr_id);
+        filtered = l.filter((lead: Lead) => lead.assigned_mr_id === user.mr_id || !lead.assigned_mr_id);
       }
       setLeads(filtered);
       setMrs(m);
