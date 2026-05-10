@@ -167,6 +167,18 @@ export default function NotificationPanel() {
           })
         )}
       </div>
+
+      <div className="p-3 bg-slate-50 border-t border-slate-100 text-center">
+        <button
+          onClick={() => {
+            setIsPanelOpen(false);
+            navigate('/notifications');
+          }}
+          className="text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline"
+        >
+          View all notifications
+        </button>
+      </div>
     </div>
   );
 }

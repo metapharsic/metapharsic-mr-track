@@ -2,11 +2,13 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotifications } from '../contexts/NotificationContext';
 import { api } from '../services/api';
+import { syncService } from '../services/syncService';
 import VoiceRecorder, { VisitRecordingData } from './VoiceRecorder';
 import { cn } from '../lib/utils';
 import {
   MapPin, Camera, CheckCircle2,
-  AlertCircle, Loader2, ChevronRight, X, FileText, Calendar, Navigation, Mic
+  AlertCircle, Loader2, ChevronRight, X, FileText, Calendar, Navigation, Mic,
+  Wifi, WifiOff, RefreshCw
 } from 'lucide-react';
 
 const STEPS = ['gps', 'photo', 'record', 'outcome', 'checkout'] as const;
@@ -41,7 +43,15 @@ export default function MRFieldTracker() {
   const [pastHistory, setPastHistory] = useState<any[]>([]);
   const [fetchingHistory, setFetchingHistory] = useState(false);
   const [visitStartTime, setVisitStartTime] = useState<number | null>(null);
+  const [syncStatus, setSyncStatus] = useState(syncService.getQueueStatus());
   const photoInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setSyncStatus(syncService.getQueueStatus());
+    }, 2000);
+    return () => clearInterval(interval);
+  }, []);
 
   const mrProfile = mrs.find(m => m.id === user?.mr_id || m.id === user?.id) || mrs[0];
   const mrId = selectedMrId ?? user?.mr_id ?? (mrs[0]?.id ?? 0);
@@ -153,35 +163,47 @@ export default function MRFieldTracker() {
 
   const handleSubmitVisit = async () => {
     setSubmitting(true);
+    const payload = {
+      scheduled_visit_id: activeVisit.id || null,
+      mr_id: mrId,
+      mr_name: user?.name,
+      entity_id: activeVisit.doctor_id || activeVisit.pharmacy_id || activeVisit.hospital_id || activeVisit.id,
+      entity_name: activeVisit.entityName || activeVisit.doctor_name || activeVisit.pharmacy_name || activeVisit.hospital_name || 'Unknown Entity',
+      entity_type: activeVisit.entityType || (activeVisit.doctor_name ? 'doctor' : activeVisit.pharmacy_name ? 'pharmacy' : activeVisit.hospital_name ? 'hospital' : 'doctor'),
+      clinic: activeVisit.clinic || activeVisit.pharmacy_name || activeVisit.hospital_name,
+      
+      // GPS & Time
+      check_in_gps: gpsCheckin ? { lat: gpsCheckin.lat, lng: gpsCheckin.lng, timestamp: new Date().toISOString() } : null,
+      check_out_gps: gpsCheckout ? { lat: gpsCheckout.lat, lng: gpsCheckout.lng, timestamp: new Date().toISOString() } : null,
+      check_in_time: gpsCheckin ? new Date().toLocaleTimeString() : null,
+      check_out_time: new Date().toLocaleTimeString(),
+      arrival_time: new Date().toISOString(),
+      duration_minutes: visitStartTime ? Math.round((new Date().getTime() - visitStartTime) / 60000) : 0,
+      
+      // Content
+      photo_url: photoDataUrl,
+      photo_captured: !!photoDataUrl,
+      audio_recording_url: recordingData?.id?.toString(), 
+      transcription: recordingData?.transcript,
+      speaking_time: recordingData ? 30 : 0,
+      
+      // Outcome
+      products_detailed: outcomeData.productsDetailed,
+      samples_given: outcomeData.samplesGiven,
+      key_discussion: outcomeData.keyDiscussion,
+      doctor_feedback: outcomeData.doctorFeedback,
+      conversation_summary: outcomeData.keyDiscussion || outcomeData.doctorFeedback,
+      order_value: parseFloat(outcomeData.orderPlaced.toString()) || 0,
+      sale_done: (parseFloat(outcomeData.orderPlaced.toString()) || 0) > 0,
+      follow_up_required: !!outcomeData.followUpDate,
+      follow_up_date: outcomeData.followUpDate || null,
+      
+      status: 'completed',
+      created_at: new Date().toISOString()
+    };
+
     try {
-      const payload = {
-        scheduled_visit_id: activeVisit.id || null,
-        mr_id: mrId,
-        mr_name: user?.name,
-        entity_name: activeVisit.entityName || activeVisit.doctor_name || activeVisit.pharmacy_name || activeVisit.hospital_name || 'Unknown Entity',
-        entity_type: activeVisit.entityType || (activeVisit.doctor_name ? 'doctor' : activeVisit.pharmacy_name ? 'pharmacy' : activeVisit.hospital_name ? 'hospital' : 'doctor'),
-        clinic: activeVisit.clinic || activeVisit.pharmacy_name || activeVisit.hospital_name,
-        check_in_lat: gpsCheckin?.lat,
-        check_in_lng: gpsCheckin?.lng,
-        check_in_time: gpsCheckin ? new Date().toISOString() : null, // Record precise check-in
-        arrival_time: new Date().toISOString(), // Structured for Admin
-        check_out_lat: gpsCheckout?.lat,
-        check_out_lng: gpsCheckout?.lng,
-        check_out_time: new Date().toISOString(),
-        duration_minutes: visitStartTime ? Math.round((new Date().getTime() - visitStartTime) / 60000) : 0,
-        photo_data_url: photoDataUrl,
-        recording_id: recordingData?.id,
-        transcript: recordingData?.transcript,
-        speaking_time_seconds: recordingData ? 30 : 0, // Mock duration or from recorder
-        products_detailed: outcomeData.productsDetailed,
-        samples_given: outcomeData.samplesGiven,
-        key_discussion: outcomeData.keyDiscussion,
-        doctor_feedback: outcomeData.doctorFeedback,
-        order_placed: outcomeData.orderPlaced,
-        follow_up_date: outcomeData.followUpDate || null,
-        status: 'completed',
-        created_at: new Date().toISOString()
-      };
+      console.log('[Visit] Submitting record:', payload);
       await api.visitRecords.create(payload);
       addNotification({
         title: 'Visit Completed',
@@ -192,13 +214,20 @@ export default function MRFieldTracker() {
       setTodayVisits(prev => prev.filter((v: any) => v.id !== activeVisit?.id));
       resetVisitState();
     } catch (error) {
-      console.error('Visit submission error:', error);
+      console.error('Visit submission error, queuing for sync:', error);
+      
+      // Queue it!
+      await syncService.addToQueue('visit', payload);
+      
       addNotification({ 
-        title: 'Visit Submission Failed', 
-        message: 'Could not save the visit record. Please try again or contact support.', 
-        type: 'error',
+        title: 'Saved Offline', 
+        message: 'No internet connection. Visit saved locally and will sync automatically once online.', 
+        type: 'warning',
         link: '/field-tracker'
       });
+      
+      setTodayVisits(prev => prev.filter((v: any) => v.id !== activeVisit?.id));
+      resetVisitState();
     }
     setSubmitting(false);
   };
@@ -218,6 +247,28 @@ export default function MRFieldTracker() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-4 pb-8 px-4 md:px-0">
+      {/* Offline/Sync Status Bar */}
+      {(!syncStatus.isOnline || syncStatus.pending > 0) && (
+        <motion.div 
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: 'auto', opacity: 1 }}
+          className={cn(
+            "rounded-xl p-3 flex items-center justify-between text-xs font-bold shadow-sm border",
+            !syncStatus.isOnline ? "bg-amber-50 border-amber-100 text-amber-700" : "bg-blue-50 border-blue-100 text-blue-700"
+          )}
+        >
+          <div className="flex items-center gap-2">
+            {!syncStatus.isOnline ? <WifiOff size={14} /> : <Wifi size={14} />}
+            <span>{!syncStatus.isOnline ? 'You are currently offline' : 'Back online'}</span>
+          </div>
+          {syncStatus.pending > 0 && (
+            <div className="flex items-center gap-2 bg-white/50 px-2 py-1 rounded-lg">
+              <RefreshCw size={12} className={cn(syncStatus.isProcessing && "animate-spin")} />
+              <span>{syncStatus.pending} pending item(s) syncing...</span>
+            </div>
+          )}
+        </motion.div>
+      )}
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-2xl p-4 md:p-6 text-white">
         <div className="flex items-center gap-3 mb-2">

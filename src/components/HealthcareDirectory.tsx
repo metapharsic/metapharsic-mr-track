@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api } from '../services/api';
 import { Doctor, Pharmacy, Hospital, MR, Visit } from '../types';
 import {
@@ -16,9 +17,9 @@ import AIVisitInspector from './AIVisitInspector';
 import { useAuth } from '../contexts/AuthContext';
 
 type EntityType = 'all' | 'doctor' | 'pharmacy' | 'hospital';
-
 export default function HealthcareDirectory() {
-  const [type, setType] = useState<EntityType>('all');
+  const [searchParams] = useSearchParams();
+  const [type, setType] = useState<EntityType>((searchParams.get('type') as EntityType) || 'all');
   const [viewMode, setViewMode] = useState<'grid' | 'list' | 'table'>('table');
   const [selectedTerritory, setSelectedTerritory] = useState<string>('all');
   const [selectedTier, setSelectedTier] = useState<string>('all');
@@ -27,7 +28,7 @@ export default function HealthcareDirectory() {
   const [hospitals, setHospitals] = useState<Hospital[]>([]);
   const [mrs, setMrs] = useState<MR[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
   const [selectedHospitalId, setSelectedHospitalId] = useState<number | null>(null);
   const [expandedHospitalId, setExpandedHospitalId] = useState<number | null>(null);
   const [schedulingItem, setSchedulingItem] = useState<any | null>(null);
@@ -243,14 +244,19 @@ export default function HealthcareDirectory() {
     setTimeout(() => setShowToast(false), 3000);
   };
 
-  const fetchAllData = () => {
+  const fetchAllData = (territoryToFetch?: string) => {
     const currentUser = user; // capture at call time
-    console.log('[HCD] fetchAllData → user:', currentUser?.name, 'role:', currentUser?.role, 'mr_id:', currentUser?.mr_id);
+    const targetTerritory = territoryToFetch !== undefined ? territoryToFetch : selectedTerritory;
+    
+    console.log('[HCD] fetchAllData → target:', targetTerritory, 'user:', currentUser?.name);
     setLoading(true);
+
+    const params = targetTerritory !== 'all' ? { territory: targetTerritory } : undefined;
+
     Promise.all([
-      api.doctors.getAll(),
-      api.pharmacies.getAll(),
-      api.hospitals.getAll(),
+      api.doctors.getAll(params),
+      api.pharmacies.getAll(params),
+      api.hospitals.getAll(params),
       api.mrs.getAll()
     ]).then(([d, p, h, m]) => {
       console.log('[HCD] data loaded → doctors:', d.length, 'pharmacies:', p.length, 'hospitals:', h.length, 'mrs:', m.length);
@@ -259,12 +265,11 @@ export default function HealthcareDirectory() {
       setHospitals(h);
       setMrs(m);
       setLoading(false);
-      // For MR users: use the MR's actual territory from the DB (live lookup) so that
-      // sub-area matching works correctly even if localStorage is stale.
-      if (currentUser?.role === 'mr' && currentUser.mr_id) {
+      
+      // If no territory was specified and user is MR, ensure their territory is selected
+      if (territoryToFetch === undefined && currentUser?.role === 'mr' && currentUser.mr_id) {
         const mrRecord = m.find((mr: any) => mr.id === currentUser.mr_id);
-        console.log('[HCD] MR record found:', mrRecord?.name, '→ territory:', mrRecord?.territory);
-        if (mrRecord?.territory) {
+        if (mrRecord?.territory && selectedTerritory === 'all') {
           setSelectedTerritory(mrRecord.territory);
         }
       }
@@ -273,6 +278,13 @@ export default function HealthcareDirectory() {
       setLoading(false);
     });
   };
+
+  // Re-fetch when territory changes (Admin only, MR territory is fixed)
+  useEffect(() => {
+    if (user?.role === 'admin') {
+      fetchAllData(selectedTerritory);
+    }
+  }, [selectedTerritory]);
 
   // Refresh data when upload completes from DataManagement
   const handleDataUpdate = () => {
@@ -357,25 +369,47 @@ export default function HealthcareDirectory() {
   const data = getFilteredData();
 
   const territories = Array.from(new Set([
+    ...mrs.map(mr => mr.territory),
     ...doctors.map(d => d.territory || d.area),
     ...pharmacies.map(p => p.territory || p.area),
-    ...hospitals.map(h => h.territory || h.area),
-    // Include MR-assigned territories so the dropdown shows the MR's territory even if no entities yet
-    ...(user?.role === 'mr' && user.mr_id ? mrs.filter((mr: any) => mr.id === user.mr_id).map((mr: any) => mr.territory) : [])
+    ...hospitals.map(h => h.territory || h.area)
   ].filter(Boolean))).sort();
 
+  // Master Territories from MR assignments
+  const masterTerritories = Array.from(new Set(mrs.map(m => m.territory).filter(Boolean)));
+
   const groupedByTerritory = data.reduce((acc: Record<string, Record<string, any[]>>, item: any) => {
-    const territory = item.territory || item.area || 'Other Territories';
+    const itemTerr = item.territory || item.area || 'Other Territories';
     const eType = item.entityType;
     
-    if (!acc[territory]) acc[territory] = {};
-    if (!acc[territory][eType]) acc[territory][eType] = [];
+    // Find matching Master Territories from MR assignments
+    const matchingMasterTerrs = masterTerritories.filter(mt => territoryMatches(itemTerr, mt));
     
-    acc[territory][eType].push(item);
+    // If no matching MR territory, use its own territory
+    const targetGroups = matchingMasterTerrs.length > 0 ? matchingMasterTerrs : [itemTerr];
+    
+    targetGroups.forEach(groupKey => {
+      if (!acc[groupKey]) acc[groupKey] = {};
+      if (!acc[groupKey][eType]) acc[groupKey][eType] = [];
+      
+      // Avoid duplicate items in the SAME group
+      if (!acc[groupKey][eType].find((i: any) => i.id === item.id)) {
+        acc[groupKey][eType].push(item);
+      }
+    });
+    
     return acc;
   }, {});
 
-  const sortedTerritories = Object.keys(groupedByTerritory).sort();
+  const sortedTerritories = Object.keys(groupedByTerritory).sort((a, b) => {
+    // Put MR territories first
+    const aIsMR = masterTerritories.includes(a);
+    const bIsMR = masterTerritories.includes(b);
+    if (aIsMR && !bIsMR) return -1;
+    if (!aIsMR && bIsMR) return 1;
+    return a.localeCompare(b);
+  });
+
   const entityOrder = ['doctor', 'pharmacy', 'hospital'];
 
   const getDoctorCountForHospital = (hospitalId: number) => {
@@ -386,11 +420,15 @@ export default function HealthcareDirectory() {
     return doctors.filter(d => d.hospital_id === hospitalId);
   };
 
+  const getMRsForTerritory = (territory: string) => {
+    return mrs.filter(mr => mr.territory === territory);
+  };
+
   const renderTableView = (territory: string) => {
-    const territoryItems = data.filter(item => territoryMatches(item.territory || item.area || '', territory));
-    const territoryDoctors = territoryItems.filter(i => i.entityType === 'doctor');
-    const territoryPharmacies = territoryItems.filter(i => i.entityType === 'pharmacy');
-    const territoryHospitals = territoryItems.filter(i => i.entityType === 'hospital');
+    const territoryItems = groupedByTerritory[territory];
+    const territoryDoctors = territoryItems['doctor'] || [];
+    const territoryPharmacies = territoryItems['pharmacy'] || [];
+    const territoryHospitals = territoryItems['hospital'] || [];
 
     let globalIndex = 1;
 
@@ -857,9 +895,14 @@ export default function HealthcareDirectory() {
               className="px-3 md:px-4 py-2.5 md:py-3 bg-white border border-slate-200 rounded-xl text-slate-600 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 appearance-none min-w-[120px] md:min-w-[160px] cursor-pointer hover:border-slate-300 transition-colors text-xs md:text-sm"
             >
               <option value="all">All Territories</option>
-              {territories.map(t => (
-                <option key={t} value={t}>{t}</option>
-              ))}
+              {territories.map(t => {
+                const matchingMR = mrs.find(mr => mr.territory === t);
+                return (
+                  <option key={t} value={t}>
+                    {matchingMR ? `${matchingMR.name} (${t})` : t}
+                  </option>
+                );
+              })}
             </select>
           )}
 
@@ -925,7 +968,11 @@ export default function HealthcareDirectory() {
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl shadow-lg shadow-slate-900/10">
                     <MapPin size={16} />
-                    <h3 className="text-sm font-bold uppercase tracking-widest">{territory}</h3>
+                    <h3 className="text-sm font-bold uppercase tracking-widest">
+                      {getMRsForTerritory(territory).length > 0 
+                        ? `${getMRsForTerritory(territory).map(m => m.name).join(' & ')} | ${territory}`
+                        : territory}
+                    </h3>
                   </div>
                   <div className="h-px flex-1 bg-slate-200"></div>
                 </div>

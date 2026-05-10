@@ -15,7 +15,14 @@ async function handleResponse<T>(res: Response): Promise<T> {
     }
     throw new Error(error);
   }
-  return res.json() as Promise<T>;
+  
+  const contentType = res.headers.get('content-type');
+  if (contentType && contentType.includes('application/json')) {
+    return res.json() as Promise<T>;
+  } else {
+    const text = await res.text();
+    throw new Error(`Expected JSON but received ${contentType || 'unknown'}: ${text.substring(0, 100)}...`);
+  }
 }
 
 // Helper to get auth headers from localStorage
@@ -79,9 +86,17 @@ export const api = {
     },
   },
   doctors: {
-    getAll: () => {
+    getAll: (params?: { territory?: string; mr_id?: number }) => {
       const headers = getAuthHeaders();
-      return fetch(`${API_BASE}/doctors`, { headers }).then(handleResponse<Doctor[]>);
+      let url = `${API_BASE}/doctors`;
+      if (params) {
+        const query = new URLSearchParams();
+        if (params.territory) query.append('territory', params.territory);
+        if (params.mr_id) query.append('mr_id', params.mr_id.toString());
+        const qs = query.toString();
+        if (qs) url += `?${qs}`;
+      }
+      return fetch(url, { headers }).then(handleResponse<Doctor[]>);
     },
     create: (doctor: Partial<Doctor>) => {
       const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
@@ -93,9 +108,17 @@ export const api = {
     },
   },
   pharmacies: {
-    getAll: () => {
+    getAll: (params?: { territory?: string; mr_id?: number }) => {
       const headers = getAuthHeaders();
-      return fetch(`${API_BASE}/pharmacies`, { headers }).then(handleResponse<Pharmacy[]>);
+      let url = `${API_BASE}/pharmacies`;
+      if (params) {
+        const query = new URLSearchParams();
+        if (params.territory) query.append('territory', params.territory);
+        if (params.mr_id) query.append('mr_id', params.mr_id.toString());
+        const qs = query.toString();
+        if (qs) url += `?${qs}`;
+      }
+      return fetch(url, { headers }).then(handleResponse<Pharmacy[]>);
     },
     create: (pharmacy: Partial<Pharmacy>) => {
       const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
@@ -107,9 +130,17 @@ export const api = {
     },
   },
   hospitals: {
-    getAll: () => {
+    getAll: (params?: { territory?: string; mr_id?: number }) => {
       const headers = getAuthHeaders();
-      return fetch(`${API_BASE}/hospitals`, { headers }).then(handleResponse<Hospital[]>);
+      let url = `${API_BASE}/hospitals`;
+      if (params) {
+        const query = new URLSearchParams();
+        if (params.territory) query.append('territory', params.territory);
+        if (params.mr_id) query.append('mr_id', params.mr_id.toString());
+        const qs = query.toString();
+        if (qs) url += `?${qs}`;
+      }
+      return fetch(url, { headers }).then(handleResponse<Hospital[]>);
     },
     create: (hospital: Partial<Hospital>) => {
       const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
@@ -124,6 +155,16 @@ export const api = {
     getAll: () => {
       const headers = getAuthHeaders();
       return fetch(`${API_BASE}/targets`, { headers }).then(handleResponse<Target[]>);
+    },
+  },
+  dashboard: {
+    getStats: () => {
+      const headers = getAuthHeaders();
+      return fetch(`${API_BASE}/dashboard/stats`, { headers }).then(handleResponse<any>);
+    },
+    getCharts: () => {
+      const headers = getAuthHeaders();
+      return fetch(`${API_BASE}/dashboard/charts`, { headers }).then(handleResponse<any>);
     },
   },
   expenses: {
@@ -156,6 +197,18 @@ export const api = {
     getForecast: () => {
       const headers = getAuthHeaders();
       return fetch(`${API_BASE}/sales-forecast`, { headers }).then(handleResponse);
+    },
+    getROI: () => {
+      const headers = getAuthHeaders();
+      return fetch(`${API_BASE}/sales-roi`, { headers }).then(handleResponse<any[]>);
+    },
+    getProfitability: () => {
+      const headers = getAuthHeaders();
+      return fetch(`${API_BASE}/profitability-analytics`, { headers }).then(handleResponse<any[]>);
+    },
+    getMarketIntelligence: () => {
+      const headers = getAuthHeaders();
+      return fetch(`${API_BASE}/market-intelligence`, { headers }).then(handleResponse<any[]>);
     },
   },
   visits: {
@@ -277,6 +330,35 @@ export const api = {
         headers,
         body: JSON.stringify(updates)
       }).then(handleResponse);
+    },
+  },
+  payments: {
+    getByEntity: (entityCreditId: number) => {
+      const headers = getAuthHeaders();
+      return fetch(`${API_BASE}/payments?entity_credit_id=${entityCreditId}`, { headers }).then(handleResponse<any[]>);
+    },
+    create: (payment: any) => {
+      const headers = { 'Content-Type': 'application/json', ...getAuthHeaders() };
+      return fetch(`${API_BASE}/payments`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payment)
+      }).then(handleResponse);
+    },
+  },
+  intelligence: {
+    getCollectionScript: (entityName: string) => {
+      const headers = getAuthHeaders();
+      return fetch(`${API_BASE}/collection-intelligence?entityName=${encodeURIComponent(entityName)}`, { headers }).then(handleResponse<{ script: string; context: any }>);
+    },
+    getEntityVisits: (entityName: string) => {
+      const headers = getAuthHeaders();
+      return fetch(`${API_BASE}/entity-visits/${encodeURIComponent(entityName)}`, { headers }).then(handleResponse<any[]>);
+    },
+    getAIPriorities: (territory?: string) => {
+      const headers = getAuthHeaders();
+      const url = territory ? `${API_BASE}/ai-priority-visits?territory=${encodeURIComponent(territory)}` : `${API_BASE}/ai-priority-visits`;
+      return fetch(url, { headers }).then(handleResponse<any[]>);
     },
   },
   locations: {

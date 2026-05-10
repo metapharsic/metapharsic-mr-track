@@ -1,8 +1,14 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import { Pool, PoolConfig } from 'pg';
+import { Pool, PoolConfig, types } from 'pg';
 import * as repositories from './repositories';
+
+// Preserve dates and timestamps as strings to match JSON mock data formats
+types.setTypeParser(1082, (val) => val); // DATE (e.g., '2026-05-07')
+types.setTypeParser(1114, (val) => val); // TIMESTAMP 
+types.setTypeParser(1184, (val) => val); // TIMESTAMPTZ
+types.setTypeParser(1700, parseFloat);  // NUMERIC/DECIMAL (return as number)
 
 console.log('DATABASE_URL:', process.env.DATABASE_URL ? '✅ Set' : '❌ Not set');
 

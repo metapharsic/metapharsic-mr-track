@@ -1,10 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { api } from '../services/api';
+import { cn } from '../lib/utils';
 import {
   TrendingUp, TrendingDown, BarChart3, Calendar, Users, Target,
   CheckCircle2, Clock, AlertCircle, Zap, Phone, MapPin, Activity,
-  ChevronRight, RefreshCw, Filter, Download, Loader2, X, Send, Bot, User
+  ChevronRight, RefreshCw, Filter, Download, Loader2, X, Send, Bot, User,
+  DollarSign
 } from 'lucide-react';
+
+const Tooltip = ({ children, content }: { children: React.ReactNode, content: string }) => (
+  <div className="group relative flex flex-col items-center">
+    {children}
+    <div className="absolute bottom-0 flex flex-col items-center hidden mb-6 group-hover:flex">
+      <span className="relative z-10 p-2 text-xs leading-none text-white whitespace-no-wrap bg-gray-800 shadow-lg rounded-md">
+        {content}
+      </span>
+      <div className="w-3 h-3 -mt-2 rotate-45 bg-gray-800"></div>
+    </div>
+  </div>
+);
 
 interface MonthlyMetrics {
   mr_id: number;
@@ -80,10 +95,15 @@ export default function MRPerformanceDashboard() {
     notes: '',
     scheduled_by: 'admin'
   });
+  const [profitability, setProfitability] = useState<any[]>([]);
+  const [showProfitability, setShowProfitability] = useState(false);
 
   useEffect(() => {
     fetchMetrics();
-  }, [selectedDate]);
+    if (showProfitability) {
+       api.sales.getProfitability().then(setProfitability);
+    }
+  }, [selectedDate, showProfitability]);
 
   const fetchMetrics = async () => {
     try {
@@ -155,10 +175,11 @@ export default function MRPerformanceDashboard() {
   };
 
   const getUnreachedEntitiesForMR = (mr: MonthlyMetrics): Entity[] => {
-    if (!metrics?.entities || mr.entities_unreached === 0) return [];
+    if (!metrics?.entities || !mr || mr.entities_unreached === 0) return [];
     
     // Get the territory of this MR
-    const territory = mr.territory.toLowerCase();
+    const territory = (mr.territory || '').toLowerCase();
+    if (!territory) return [];
     
     // Filter entities in this MR's territory that haven't been reached
     const unreachedInTerritory = metrics.entities
@@ -195,29 +216,30 @@ export default function MRPerformanceDashboard() {
   }
 
   const getFilteredMRs = () => {
+    if (!metrics?.mr_performance) return [];
     let filtered = [...metrics.mr_performance];
 
     // Filter by performance
     if (filter === 'high') {
-      filtered = filtered.filter(mr => mr.conversion_rate >= 80);
+      filtered = filtered.filter(mr => (mr.conversion_rate || 0) >= 80);
     } else if (filter === 'low') {
-      filtered = filtered.filter(mr => mr.conversion_rate >= 50 && mr.conversion_rate < 80);
+      filtered = filtered.filter(mr => (mr.conversion_rate || 0) >= 50 && (mr.conversion_rate || 0) < 80);
     } else if (filter === 'critical') {
-      filtered = filtered.filter(mr => mr.conversion_rate < 50);
+      filtered = filtered.filter(mr => (mr.conversion_rate || 0) < 50);
     }
 
     // Sort
     if (sortBy === 'performance') {
-      filtered.sort((a, b) => b.conversion_rate - a.conversion_rate);
+      filtered.sort((a, b) => (b.conversion_rate || 0) - (a.conversion_rate || 0));
     } else if (sortBy === 'unreached') {
-      filtered.sort((a, b) => b.entities_unreached - a.entities_unreached);
+      filtered.sort((a, b) => (b.entities_unreached || 0) - (a.entities_unreached || 0));
     }
 
     return filtered;
   };
 
   const filteredMRs = getFilteredMRs();
-  const selectedMRData = metrics.mr_performance.find(mr => mr.mr_id === selectedMR);
+  const selectedMRData = metrics?.mr_performance?.find(mr => mr.mr_id === selectedMR);
 
   return (
     <div className="p-8 space-y-8 bg-gradient-to-br from-slate-50 to-slate-100 min-h-screen">
@@ -250,8 +272,105 @@ export default function MRPerformanceDashboard() {
             <RefreshCw size={18} />
             <span>Refresh</span>
           </button>
+          <button
+            onClick={() => setShowProfitability(!showProfitability)}
+            className={cn(
+              "flex items-center gap-2 px-4 py-2 rounded-lg font-bold transition-all border",
+              showProfitability ? "bg-emerald-600 text-white border-emerald-600" : "bg-white border-slate-200 text-emerald-600 hover:bg-emerald-50"
+            )}
+          >
+            <DollarSign size={18} />
+            <span>Net Profitability</span>
+          </button>
         </div>
       </div>
+
+      {/* Net Profitability Panel */}
+      <AnimatePresence>
+        {showProfitability && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+            className="bg-white rounded-2xl border border-emerald-100 shadow-xl overflow-hidden mb-8"
+          >
+            <div className="bg-emerald-600 p-6 text-white flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <TrendingUp size={24} />
+                <div>
+                  <h3 className="text-xl font-bold">Executive Profitability Intelligence</h3>
+                  <p className="text-emerald-100 text-xs mt-0.5">Real-time correlation of Revenue vs. Direct MR Costs (Salary + Allowances + Expenses).</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                 <div className="px-3 py-1 bg-emerald-500/50 rounded-lg border border-emerald-400 text-[10px] font-bold uppercase tracking-wider">
+                    Executive View
+                 </div>
+              </div>
+            </div>
+
+            <div className="p-6">
+              <div className="overflow-hidden border border-slate-100 rounded-xl">
+                 <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-500 uppercase font-bold">
+                       <tr>
+                          <th className="px-4 py-3">Representative</th>
+                          <th className="px-4 py-3 text-center">Monthly Revenue</th>
+                          <th className="px-4 py-3 text-center">Direct Costs</th>
+                          <th className="px-4 py-3 text-center">Net Profit</th>
+                          <th className="px-4 py-3 text-center">Margin %</th>
+                          <th className="px-4 py-3 text-right">ROI Status</th>
+                       </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-50">
+                       {profitability.map((mr) => (
+                         <tr key={mr.mr_id} className="hover:bg-slate-50/50 transition-colors">
+                            <td className="px-4 py-3">
+                               <p className="font-bold text-slate-900">{mr.mr_name}</p>
+                               <p className="text-[10px] text-slate-500 uppercase">{mr.territory}</p>
+                            </td>
+                            <td className="px-4 py-3 text-center font-medium">₹{Number(mr.monthly_revenue).toLocaleString()}</td>
+                            <td className="px-4 py-3 text-center font-medium text-red-500">
+                               <Tooltip content={`Salary: ₹${Number(mr.base_salary).toLocaleString()}, Exp: ₹${Number(mr.field_expenses).toLocaleString()}`}>
+                                  <span>₹{Number(mr.total_costs).toLocaleString()}</span>
+                               </Tooltip>
+                            </td>
+                            <td className={cn(
+                               "px-4 py-3 text-center font-bold",
+                               mr.net_profit > 0 ? "text-emerald-600" : "text-red-600"
+                            )}>₹{Number(mr.net_profit).toLocaleString()}</td>
+                            <td className="px-4 py-3 text-center">
+                               <div className="flex items-center justify-center gap-2">
+                                  <div className="w-12 bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                                     <div className={cn(
+                                       "h-full rounded-full",
+                                       mr.profit_margin_pct > 20 ? "bg-emerald-500" : 
+                                       mr.profit_margin_pct > 0 ? "bg-blue-500" : "bg-red-500"
+                                     )} style={{ width: `${Math.max(0, Math.min(100, mr.profit_margin_pct))}%` }}></div>
+                                  </div>
+                                  <span className="font-bold">{mr.profit_margin_pct}%</span>
+                               </div>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                               <span className={cn(
+                                 "px-2 py-1 rounded text-[10px] font-bold uppercase",
+                                 mr.profit_margin_pct > 30 ? "bg-emerald-100 text-emerald-700" : 
+                                 mr.profit_margin_pct > 0 ? "bg-blue-100 text-blue-700" : "bg-red-100 text-red-700"
+                               )}>
+                                 {mr.profit_margin_pct > 30 ? 'High ROI' : mr.profit_margin_pct > 0 ? 'Profitable' : 'Loss Making'}
+                               </span>
+                            </td>
+                         </tr>
+                       ))}
+                       {profitability.length === 0 && (
+                         <tr>
+                            <td colSpan={6} className="px-4 py-8 text-center text-slate-400">No profitability data available for current month</td>
+                         </tr>
+                       )}
+                    </tbody>
+                 </table>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Top Metrics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">

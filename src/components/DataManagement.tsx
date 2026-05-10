@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { classifyMixedData, getClassificationSummary } from '../lib/dataClassifier';
+import { cn } from '../lib/utils';
 
 interface DataStats {
   totalDoctors: number;
@@ -68,6 +69,17 @@ function parseSheetSmart(worksheet: any): any[] {
   return result;
 }
 
+const REGIONAL_DISCOVERY_LIST = [
+  'Abids', 'Ameerpet', 'Banjara Hills', 'Begumpet', 'Bowenpally', 
+  'Chandanagar', 'Charminar', 'Dilsukhnagar', 'Gachibowli', 'Habsiguda', 
+  'Himayatnagar', 'Hitech City', 'Jharasangam', 'Jubilee Hills', 'Kohir', 
+  'Kondapur', 'Kothapet', 'Kukatpally', 'LB Nagar', 'Madhapur', 'Malakpet', 
+  'Malkajgiri', 'Manikonda', 'Mehdipatnam', 'Miyapur', 'Munipally', 
+  'Musheerabad', 'Nacharam', 'Nallakunta', 'Nampally', 'Nizampet', 
+  'Panjagutta', 'Sainikpuri', 'Secunderabad', 'Somajigutta', 'Tarnaka', 
+  'Tirumalagiri', 'Uppal', 'Zaheerabad'
+];
+
 export default function DataManagement() {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
@@ -90,13 +102,93 @@ export default function DataManagement() {
   const [selectedEntity, setSelectedEntity] = useState<any>(null);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [mrs, setMrs] = useState<any[]>([]);
+  const [showFetchModal, setShowFetchModal] = useState(false);
+  const [fetchRegionName, setFetchRegionName] = useState('');
+  const [isFetchingRegion, setIsFetchingRegion] = useState(false);
+  const [existingTerritories, setExistingTerritories] = useState<string[]>([]);
+  const [isManualEntry, setIsManualEntry] = useState(false);
 
   React.useEffect(() => {
     fetchDataStats();
     fetchDataQuality();
     fetchPendingEntities();
     fetchMRs();
+    fetchExistingTerritories();
   }, []);
+
+  const fetchExistingTerritories = async () => {
+    // Start with the predefined list so it's never empty
+    setExistingTerritories([...REGIONAL_DISCOVERY_LIST].sort());
+    
+    try {
+      const response = await fetch('/api/download-data');
+      if (response.ok) {
+        const data = await response.json();
+        const mrTerritories = (data.mrs || []).map((m: any) => m.territory).filter(Boolean);
+        const docTerritories = (data.doctors || []).map((d: any) => d.territory).filter(Boolean);
+        
+        // Merge database territories with our predefined regional discovery list
+        const dbTerritories = [...mrTerritories, ...docTerritories];
+        const all = Array.from(new Set([...REGIONAL_DISCOVERY_LIST, ...dbTerritories])) as string[];
+        
+        const sorted = all.sort();
+        setExistingTerritories(sorted);
+        
+        // Default to first territory if available and not manual
+        if (sorted.length > 0 && !fetchRegionName) {
+          setFetchRegionName(sorted[0]);
+        }
+      }
+    } catch (e) {
+      console.error("Failed to fetch existing territories, using default list", e);
+    }
+  };
+  
+  const handleAutoFetch = async () => {
+    if (!fetchRegionName.trim()) return;
+    
+    setIsFetchingRegion(true);
+    setMessage(null);
+    
+    try {
+      const response = await fetch('/api/fetch-region', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ region: fetchRegionName.trim() })
+      });
+      
+      // Get the raw text first to avoid 'Unexpected end of JSON input'
+      const text = await response.text();
+      let result;
+      try {
+        result = text ? JSON.parse(text) : {};
+      } catch (e) {
+        console.error("Failed to parse response text:", text);
+        throw new Error("The server sent an invalid response. Please try again.");
+      }
+      
+      if (response.ok) {
+        setMessage({
+          type: 'success',
+          text: result.message || `Successfully discovered ${result.count} entities.`
+        });
+        setShowFetchModal(false);
+        setFetchRegionName('');
+        setActiveTab('pending'); // Automatically switch to Pending tab
+        fetchPendingEntities();
+      } else {
+        setMessage({ 
+            type: 'error', 
+            text: `Discovery failed: ${result.message || result.error || 'Server error'}` 
+        });
+      }
+    } catch (error: any) {
+      console.error("Fetch error:", error);
+      setMessage({ type: 'error', text: `Connection Error: ${error.message}` });
+    } finally {
+      setIsFetchingRegion(false);
+    }
+  };
   
   const fetchPendingEntities = async () => {
     try {
@@ -388,12 +480,21 @@ export default function DataManagement() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6 ml-64">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
-        <div className="mb-6">
-          <div className="flex items-center gap-3 mb-2">
-            <FileText size={32} className="text-blue-600" />
-            <h1 className="text-3xl font-bold text-slate-900">Data Management</h1>
+        <div className="mb-6 flex items-start justify-between">
+          <div>
+            <div className="flex items-center gap-3 mb-2">
+              <FileText size={32} className="text-blue-600" />
+              <h1 className="text-3xl font-bold text-slate-900">Data Management</h1>
+            </div>
+            <p className="text-slate-600">Upload, download, analyze and manage healthcare provider data</p>
           </div>
-          <p className="text-slate-600">Upload, download, analyze and manage healthcare provider data</p>
+          <button
+            onClick={() => setShowFetchModal(true)}
+            className="px-4 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-bold shadow-lg shadow-blue-200 hover:shadow-xl hover:scale-[1.02] transition-all flex items-center gap-2"
+          >
+            <Zap size={18} fill="currentColor" />
+            Auto-Fetch Territory Data
+          </button>
         </div>
 
         {/* Quick Actions */}
@@ -931,46 +1032,56 @@ export default function DataManagement() {
                   <table className="w-full">
                     <thead className="bg-slate-50 border-b border-slate-200">
                       <tr>
-                        <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">Entity</th>
-                        <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">Type</th>
-                        <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">Territory</th>
-                        <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">Tier</th>
-                        <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">Upload Date</th>
-                        <th className="text-left py-3 px-4 text-xs font-semibold text-slate-600 uppercase">Actions</th>
+                        <th className="text-left py-3 px-4 text-xs font-bold text-slate-500 uppercase">Entity</th>
+                        <th className="text-left py-3 px-4 text-xs font-bold text-slate-500 uppercase">Type</th>
+                        <th className="text-left py-3 px-4 text-xs font-bold text-slate-500 uppercase">Address</th>
+                        <th className="text-left py-3 px-4 text-xs font-bold text-slate-500 uppercase">Territory</th>
+                        <th className="text-left py-3 px-4 text-xs font-bold text-slate-500 uppercase">Tier</th>
+                        <th className="text-left py-3 px-4 text-xs font-bold text-slate-500 uppercase">Source</th>
+                        <th className="text-left py-3 px-4 text-xs font-bold text-slate-500 uppercase">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {pendingEntities.filter(e => e.status === 'pending').map((entity) => (
                         <tr key={entity.id} className="hover:bg-slate-50 transition-colors">
                           <td className="py-3 px-4">
-                            <p className="font-medium text-slate-900">{entity.entity_data?.name || 'N/A'}</p>
-                            <p className="text-xs text-slate-500">{entity.entity_data?.clinic || entity.entity_data?.specialty || ''}</p>
+                            <p className="font-bold text-slate-800">{entity.entity_data?.name || 'N/A'}</p>
+                            <p className="text-[10px] text-slate-500">{entity.entity_data?.clinic || entity.entity_data?.specialty || entity.entity_data?.phone || ''}</p>
                           </td>
                           <td className="py-3 px-4">
-                            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium capitalize">
+                            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-[10px] font-bold uppercase tracking-tight capitalize">
                               {entity.entity_type}
                             </span>
                           </td>
-                          <td className="py-3 px-4 text-sm text-slate-700">{entity.territory || 'N/A'}</td>
+                          <td className="py-3 px-4 text-xs text-slate-600 max-w-[180px] truncate" title={entity.entity_data?.address}>
+                            {entity.entity_data?.address || 'N/A'}
+                          </td>
+                          <td className="py-3 px-4 text-xs font-medium text-slate-700">{entity.territory || 'N/A'}</td>
                           <td className="py-3 px-4">
-                            <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                              entity.tier === 'A' ? 'bg-green-100 text-green-700' :
-                              entity.tier === 'B' ? 'bg-yellow-100 text-yellow-700' :
-                              'bg-red-100 text-red-700'
-                            }`}>
+                            <span className={cn(
+                              "px-2 py-1 rounded-full text-[10px] font-bold",
+                              entity.tier === 'A' ? "bg-emerald-100 text-emerald-700" :
+                              entity.tier === 'B' ? "bg-blue-100 text-blue-700" :
+                              "bg-red-100 text-red-700"
+                            )}>
                               {entity.tier}
                             </span>
                           </td>
-                          <td className="py-3 px-4 text-sm text-slate-600">
-                            {new Date(entity.upload_date).toLocaleDateString()}
+                          <td className="py-3 px-4 text-[10px]">
+                            <span className={cn(
+                              "font-bold uppercase px-1.5 py-0.5 rounded border",
+                              entity.source === 'osm_auto_fetch' ? "text-purple-600 border-purple-200 bg-purple-50" : "text-slate-400 border-slate-200 bg-slate-50"
+                            )}>
+                              {entity.source === 'osm_auto_fetch' ? 'Geo-Fetch' : 'Excel'}
+                            </span>
                           </td>
                           <td className="py-3 px-4">
                             <div className="flex gap-2">
                               <button
                                 onClick={() => { setSelectedEntity(entity); setShowAssignModal(true); }}
-                                className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 inline-flex items-center gap-1"
+                                className="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-[10px] font-bold uppercase hover:bg-slate-800 inline-flex items-center gap-1 shadow-sm transition-all"
                               >
-                                <UserCheck size={14} />
+                                <UserCheck size={12} />
                                 Assign
                               </button>
                             </div>
@@ -1181,20 +1292,35 @@ export default function DataManagement() {
                 defaultValue=""
               >
                 <option value="" disabled>Choose an MR...</option>
+                {/* 1. Show Suggested MRs (Matching Territory) */}
                 {mrs
                   .filter(mr => mr.territory && selectedEntity.territory && 
                     (mr.territory.toLowerCase().includes(selectedEntity.territory.toLowerCase()) ||
                      selectedEntity.territory.toLowerCase().includes(mr.territory.toLowerCase())))
-                  .map(mr => (
-                    <option key={mr.id} value={mr.id}>
-                      {mr.name} - {mr.territory.split('(')[0].trim()} (Score: {mr.performance_score})
-                    </option>
-                  ))}
-                {mrs.filter(mr => mr.territory && selectedEntity.territory && 
-                    (mr.territory.toLowerCase().includes(selectedEntity.territory.toLowerCase()) ||
-                     selectedEntity.territory.toLowerCase().includes(mr.territory.toLowerCase()))).length === 0 && (
-                  <option disabled>No matching MRs in this territory</option>
-                )}
+                  .length > 0 && (
+                    <optgroup label="Suggested (Match Territory)">
+                      {mrs
+                        .filter(mr => mr.territory && selectedEntity.territory && 
+                          (mr.territory.toLowerCase().includes(selectedEntity.territory.toLowerCase()) ||
+                           selectedEntity.territory.toLowerCase().includes(mr.territory.toLowerCase())))
+                        .map(mr => (
+                          <option key={mr.id} value={mr.id}>
+                            {mr.name} - {mr.territory.split('(')[0].trim()} (Score: {mr.performance_score})
+                          </option>
+                        ))}
+                    </optgroup>
+                  )}
+                
+                {/* 2. Show All Other MRs */}
+                <optgroup label="All Available MRs">
+                  {mrs
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map(mr => (
+                      <option key={mr.id} value={mr.id}>
+                        {mr.name} - {mr.territory.split('(')[0].trim()}
+                      </option>
+                    ))}
+                </optgroup>
               </select>
 
               <div className="flex gap-3">
@@ -1204,6 +1330,85 @@ export default function DataManagement() {
                   disabled={isAssigning}
                 >
                   Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Regional Auto-Fetch Modal */}
+        {showFetchModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 backdrop-blur-sm" onClick={() => setShowFetchModal(false)}>
+            <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center gap-3 mb-6">
+                <div className="p-3 bg-blue-50 rounded-xl">
+                  <Database size={24} className="text-blue-600" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900">Territory Discovery</h3>
+                  <p className="text-sm text-slate-500">Auto-fetch region data from OSM</p>
+                </div>
+              </div>
+              
+              <div className="mb-6">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-sm font-bold text-slate-700">Region/Territory Name *</label>
+                  <button 
+                    onClick={() => setIsManualEntry(!isManualEntry)}
+                    className="text-[10px] font-bold text-blue-600 uppercase hover:underline"
+                  >
+                    {isManualEntry ? 'Switch to List' : 'Enter New Region'}
+                  </button>
+                </div>
+                
+                {isManualEntry ? (
+                  <input
+                    type="text"
+                    placeholder="e.g. Nacharam, Hyderabad"
+                    value={fetchRegionName}
+                    onChange={(e) => setFetchRegionName(e.target.value)}
+                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-lg"
+                    disabled={isFetchingRegion}
+                  />
+                ) : (
+                  <select
+                    value={fetchRegionName}
+                    onChange={(e) => setFetchRegionName(e.target.value)}
+                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-lg bg-white"
+                    disabled={isFetchingRegion}
+                  >
+                    <option value="" disabled>Select a Managed Region</option>
+                    {existingTerritories.map((t, idx) => (
+                      <option key={idx} value={t}>{t}</option>
+                    ))}
+                  </select>
+                )}
+                
+                <div className="flex justify-between mt-3">
+                  <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">
+                    Discovery Mode: <span className={cn(isManualEntry ? "text-amber-500" : "text-emerald-500")}>{isManualEntry ? 'Custom' : 'Sync Managed'}</span>
+                  </p>
+                  <p className="text-[9px] text-blue-500 font-semibold italic">
+                    {existingTerritories.length} Managed Regions Available
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowFetchModal(false)}
+                  className="flex-1 px-4 py-3 border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 font-semibold transition-all"
+                  disabled={isFetchingRegion}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAutoFetch}
+                  disabled={isFetchingRegion || !fetchRegionName.trim()}
+                  className="flex-[2] px-4 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
+                >
+                  {isFetchingRegion ? <Loader2 size={20} className="animate-spin" /> : <Zap size={20} />}
+                  {isFetchingRegion ? 'Discovering...' : 'Fetch Territory Data'}
                 </button>
               </div>
             </div>

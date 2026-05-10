@@ -138,6 +138,12 @@ export interface Expense {
   description: string;
   mr_id: number | null;
   status?: 'pending' | 'approved' | 'rejected';
+  // Phase 5: Expense Manager Enhancements
+  doctor_id?: number;
+  pharmacy_id?: number;
+  hospital_id?: number;
+  entity_type?: 'doctor' | 'pharmacy' | 'hospital';
+  is_auto_approved?: boolean;
 }
 
 export interface Sale {
@@ -168,8 +174,20 @@ export interface Visit {
   status: 'scheduled' | 'completed' | 'in_progress';
   purpose: string;
   notes: string;
+  outcome?: string;
+  next_steps?: string;
+  products_detailed?: string;
+  samples_given?: string;
+  follow_up_date?: string;
+  check_in_time?: string;
+  check_out_time?: string;
+  check_in_gps?: GPSPoint;
+  check_out_gps?: GPSPoint;
+  audio_recording_url?: string;
+  transcription?: string;
   conversation_summary?: string;
   order_value: number;
+  sentiment?: 'positive' | 'neutral' | 'negative';
 }
 
 export interface ForecastData {
@@ -190,7 +208,12 @@ export interface Lead {
   assigned_mr_id?: number;
   assigned_mr_name?: string;
   created_at: string;
-  // Phase 4: AI Lead Conversion fields
+  // Phase 4 & 5: Database Optimization fields
+  doctor_id?: number;
+  pharmacy_id?: number;
+  hospital_id?: number;
+  entity_type?: 'doctor' | 'pharmacy' | 'hospital';
+  is_cold?: boolean;
   conversion_probability?: number; // 0-100
   expected_revenue?: number;
   actual_revenue?: number;

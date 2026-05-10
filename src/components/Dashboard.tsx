@@ -16,51 +16,55 @@ import { cn } from '../lib/utils';
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const [mrs, setMrs] = useState<MR[]>([]);
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [targets, setTargets] = useState<TargetType[]>([]);
+  const [stats, setStats] = useState<any>(null);
+  const [charts, setCharts] = useState<any>(null);
   const [forecast, setForecast] = useState<ForecastData[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
-      api.mrs.getAll(),
-      api.sales.getAll(),
-      api.targets.getAll(),
+      api.dashboard.getStats(),
+      api.dashboard.getCharts(),
       api.sales.getForecast()
-    ]).then(([mrsData, salesData, targetsData, forecastData]) => {
-      setMrs(mrsData);
-      setSales(salesData);
-      setTargets(targetsData);
+    ]).then(([statsData, chartsData, forecastData]) => {
+      setStats(statsData);
+      setCharts(chartsData);
       setForecast(forecastData);
       setTimeout(() => {
         setLoading(false);
       }, 500);
+    }).catch(err => {
+      console.error('Failed to load dashboard data:', err);
+      setLoading(false);
     });
   }, []);
 
-  const totalSales = sales.reduce((sum, s) => sum + s.amount, 0);
-  const totalTarget = targets.reduce((sum, t) => sum + t.target_value, 0);
-  const achievementRate = (totalSales / totalTarget) * 100;
+  if (loading || !stats || !charts) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
 
-  const stats = [
-    { label: 'Total Sales', value: `₹${(totalSales / 100000).toFixed(2)}L`, icon: TrendingUp, color: 'bg-blue-500', trend: '+12.5%', isUp: true },
-    { label: 'Active MRs', value: mrs.length.toString(), icon: Users, color: 'bg-purple-500', trend: '0%', isUp: true },
-    { label: 'Target Achievement', value: `${achievementRate.toFixed(1)}%`, icon: Target, color: 'bg-emerald-500', trend: '+5.2%', isUp: true },
-    { label: 'Top Performer', value: mrs.sort((a, b) => b.performance_score - a.performance_score)[0]?.name || 'N/A', icon: Award, color: 'bg-amber-500', trend: 'Elite', isUp: true },
+  const dashboardStats = [
+    { label: 'Total Sales', value: `₹${(stats.totalSales / 100000).toFixed(2)}L`, icon: TrendingUp, color: 'bg-blue-500', trend: '+12.5%', isUp: true },
+    { label: 'Active MRs', value: stats.activeMRs.toString(), icon: Users, color: 'bg-purple-500', trend: '0%', isUp: true },
+    { label: 'Target Achievement', value: `${stats.achievementRate.toFixed(1)}%`, icon: Target, color: 'bg-emerald-500', trend: '+5.2%', isUp: true },
+    { label: 'Top Performer', value: stats.topPerformer?.name || 'N/A', icon: Award, color: 'bg-amber-500', trend: 'Elite', isUp: true },
   ];
 
-  // Combine historical targets and forecast for the chart
-  const chartData = [
-    ...targets.map(t => ({
-      name: new Date(t.month).toLocaleString('default', { month: 'short' }),
+  // Combine historical trends and forecast for the chart
+  const trendData = [
+    ...charts.monthlyTrends.map((t: any) => ({
+      name: new Date(t.month + '-01').toLocaleString('default', { month: 'short' }),
       month: t.month,
-      sales: t.achieved_value,
-      target: t.target_value,
+      sales: parseFloat(t.sales),
+      target: parseFloat(t.target),
       isForecast: false
     })),
     ...forecast.map(f => ({
-      name: new Date(f.month).toLocaleString('default', { month: 'short' }),
+      name: new Date(f.month + '-01').toLocaleString('default', { month: 'short' }),
       month: f.month,
       forecast: f.predicted_sales,
       target: null,
@@ -70,19 +74,11 @@ export default function Dashboard() {
     }))
   ].sort((a, b) => a.month.localeCompare(b.month));
 
-  const mrPerformance = mrs.map(mr => ({
+  const leaderboard = charts.leaderboard.map((mr: any) => ({
     name: mr.name.split(' ')[0],
-    sales: mr.total_sales,
-    score: mr.performance_score
-  })).sort((a, b) => b.sales - a.sales);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
+    sales: parseFloat(mr.sales),
+    score: mr.score
+  }));
 
   return (
     <div className="space-y-8 p-8">
@@ -104,7 +100,7 @@ export default function Dashboard() {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat, i) => (
+        {dashboardStats.map((stat, i) => (
           <motion.div
             key={stat.label}
             initial={{ opacity: 0, y: 20 }}
@@ -158,7 +154,7 @@ export default function Dashboard() {
           </div>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData}>
+              <AreaChart data={trendData}>
                 <defs>
                   <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#2563eb" stopOpacity={0.1}/>
@@ -242,7 +238,7 @@ export default function Dashboard() {
         >
           <h3 className="text-lg font-bold text-slate-900 mb-6">Top Performers</h3>
           <div className="space-y-6">
-            {mrPerformance.slice(0, 5).map((mr, i) => (
+            {leaderboard.slice(0, 5).map((mr: any, i: number) => (
               <div key={mr.name} className="flex items-center gap-4">
                 <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-sm font-bold text-slate-600">
                   {i + 1}
@@ -255,7 +251,7 @@ export default function Dashboard() {
                   <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
                     <motion.div 
                       initial={{ width: 0 }}
-                      animate={{ width: `${(mr.sales / mrPerformance[0].sales) * 100}%` }}
+                      animate={{ width: `${(mr.sales / leaderboard[0].sales) * 100}%` }}
                       className="bg-blue-600 h-full rounded-full"
                     />
                   </div>
@@ -263,7 +259,9 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
-          <button className="w-full mt-8 py-3 text-sm font-bold text-blue-600 bg-blue-50 rounded-xl hover:bg-blue-100 transition-colors">
+          <button 
+            onClick={() => navigate('/mrs')}
+            className="w-full mt-8 py-3 text-sm font-bold text-blue-600 bg-blue-50 rounded-xl hover:bg-blue-100 transition-colors">
             View All Performance
           </button>
         </motion.div>
@@ -274,20 +272,20 @@ export default function Dashboard() {
         <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
           <h3 className="text-lg font-bold text-slate-900 mb-6">Recent Sales Activity</h3>
           <div className="space-y-4">
-            {sales.slice(0, 5).map((sale) => (
+            {charts.recentSales.map((sale: any) => (
               <div key={sale.id} className="flex items-center justify-between p-4 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100">
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">
                     <Package size={20} />
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-slate-900">{sale.customer_name}</p>
-                    <p className="text-xs text-slate-500">{sale.date} • {sale.sale_type.replace('_', ' ')}</p>
+                    <p className="text-sm font-bold text-slate-900">{sale.customer_name || sale.doctor_name || 'Customer'}</p>
+                    <p className="text-xs text-slate-500">{new Date(sale.date).toLocaleDateString()} • {sale.sale_type.replace('_', ' ')}</p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-bold text-slate-900">₹{sale.amount.toLocaleString()}</p>
-                  <p className="text-xs text-emerald-600 font-medium">Paid</p>
+                  <p className="text-sm font-bold text-slate-900">₹{parseFloat(sale.amount).toLocaleString()}</p>
+                  <p className="text-xs text-emerald-600 font-medium">Completed</p>
                 </div>
               </div>
             ))}
@@ -356,3 +354,4 @@ export default function Dashboard() {
     </div>
   );
 }
+

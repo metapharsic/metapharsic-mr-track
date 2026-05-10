@@ -3,15 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  LineChart, Line, AreaChart, Area, PieChart, Pie, Cell, RadialBarChart, RadialBar
+  LineChart, Line, AreaChart, Area, PieChart, Pie, Cell
 } from 'recharts';
 import {
   TrendingUp, Users, Package, Award, Target, Calendar,
   ArrowUpRight, ArrowDownRight, FileText, Download, Activity,
-  BarChart3, PieChart as PieIcon, LineChart as LineChartIcon, Settings
+  BarChart3, PieChart as PieIcon, Settings
 } from 'lucide-react';
 import { api } from '../services/api';
-import { MR, Sale, Target as TargetType, ForecastData } from '../types';
+import { ForecastData } from '../types';
 
 interface WidgetConfig {
   id: string;
@@ -26,15 +26,9 @@ export default function DynamicDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [widgets, setWidgets] = useState<WidgetConfig[]>([]);
-  const [mrs, setMrs] = useState<MR[]>([]);
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [targets, setTargets] = useState<TargetType[]>([]);
+  const [stats, setStats] = useState<any>(null);
+  const [charts, setCharts] = useState<any>(null);
   const [forecast, setForecast] = useState<ForecastData[]>([]);
-  const [products, setProducts] = useState<any[]>([]);
-  const [doctors, setDoctors] = useState<any[]>([]);
-  const [pharmacies, setPharmacies] = useState<any[]>([]);
-  const [expenses, setExpenses] = useState<any[]>([]);
-  const [leads, setLeads] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
@@ -48,10 +42,8 @@ export default function DynamicDashboard() {
         setWidgets(getDefaultWidgets());
       }
     };
-
     loadWidgets();
 
-    // Listen for widget config changes from Settings page
     const handler = (e: StorageEvent) => {
       if (e.key === 'metapharsic_dashboard_widgets' || e.key === 'metapharsic_settings') {
         loadWidgets();
@@ -62,39 +54,19 @@ export default function DynamicDashboard() {
   }, []);
 
   useEffect(() => {
-    // Load all data
     Promise.all([
-      api.mrs.getAll(),
-      api.sales.getAll(),
-      api.targets.getAll(),
-      api.sales.getForecast(),
-      api.products.getAll(),
-      api.doctors.getAll().catch(() => []),
-      api.pharmacies.getAll().catch(() => []),
-      api.expenses.getAll().catch(() => []),
-      api.leads.getAll().catch(() => []),
-    ]).then(([mrsData, salesData, targetsData, forecastData, productsData, doctorsData, pharmaciesData, expensesData, leadsData]) => {
-      let filteredSales = salesData || [];
-      let filteredTargets = targetsData || [];
-      let filteredExpenses = expensesData || [];
-      let filteredLeads = leadsData || [];
-      if (user?.role === 'mr') {
-        filteredSales = filteredSales.filter((s: Sale) => s.mr_id === user.mr_id);
-        filteredTargets = filteredTargets.filter((t: any) => t.mr_id === user.mr_id);
-        filteredExpenses = filteredExpenses.filter((e: any) => e.mr_id === user.mr_id);
-        filteredLeads = filteredLeads.filter((l: any) => l.mr_id === user.mr_id || l.assigned_mr_id === user.mr_id || !l.assigned_mr_id);
-      }
-      setMrs(mrsData || []);
-      setSales(filteredSales);
-      setTargets(filteredTargets);
+      api.dashboard.getStats(),
+      api.dashboard.getCharts(),
+      api.sales.getForecast()
+    ]).then(([statsData, chartsData, forecastData]) => {
+      setStats(statsData);
+      setCharts(chartsData);
       setForecast(forecastData || []);
-      setProducts(productsData || []);
-      setDoctors(doctorsData || []);
-      setPharmacies(pharmaciesData || []);
-      setExpenses(filteredExpenses);
-      setLeads(filteredLeads);
       setTimeout(() => setLoading(false), 300);
-    }).catch(() => setLoading(false));
+    }).catch(err => {
+      console.error('Failed to load dashboard data:', err);
+      setLoading(false);
+    });
   }, []);
 
   function getDefaultWidgets(): WidgetConfig[] {
@@ -114,70 +86,11 @@ export default function DynamicDashboard() {
     ];
     return all.filter(w => {
       if (!isAdmin && w.id === 'mr-leaderboard') return false;
-      if (!isAdmin && w.id === 'doctor-territory') return false;
-      if (!isAdmin && w.id === 'pharmacy-distribution') return false;
       return true;
     });
   }
 
-  const enabledWidgets = widgets.filter(w => w.enabled);
-  const totalSales = sales.reduce((sum, s) => sum + s.amount, 0);
-  const totalTarget = targets.reduce((sum, t) => sum + t.target_value, 0);
-  const achievementRate = totalTarget > 0 ? (totalSales / totalTarget) * 100 : 0;
-  const topMR = [...mrs].sort((a, b) => b.performance_score - a.performance_score)[0];
-
-  // Chart data preparations
-  const chartData = [
-    ...targets.map(t => ({
-      name: new Date(t.month).toLocaleString('default', { month: 'short' }),
-      month: t.month, sales: t.achieved_value, target: t.target_value, isForecast: false,
-    })),
-    ...forecast.map(f => ({
-      name: new Date(f.month).toLocaleString('default', { month: 'short' }),
-      month: f.month, forecast: f.predicted_sales, target: null,
-      confidence_high: f.confidence_high, confidence_low: f.confidence_low, isForecast: true,
-    }))
-  ].sort((a: any, b: any) => a.month.localeCompare(b.month));
-
-  const mrPerformance = [...mrs].sort((a, b) => b.total_sales - a.total_sales).slice(0, 10).map(mr => ({
-    name: mr.name.split(' ')[0], sales: mr.total_sales, score: mr.performance_score,
-  }));
-
-  const productData = products.map((p: any) => ({
-    name: p.name?.split(' ')[0] || p.brand_name?.split(' ')[0] || 'Product',
-    sales: p.total_sales || Math.floor(Math.random() * 500000) + 50000,
-  })).slice(0, 8);
-
-  const expenseData = [...(expenses || [])].reduce((acc: any[], e: any) => {
-    const existing = acc.find(a => a.name === e.category);
-    if (existing) existing.amount += e.amount;
-    else acc.push({ name: e.category || 'Other', amount: e.amount });
-    return acc;
-  }, []).slice(0, 8);
-
-  if (expenseData.length === 0) {
-    expenseData.push(
-      { name: 'Travel', amount: 45000 },
-      { name: 'Food', amount: 18000 },
-      { name: 'Lodging', amount: 32000 },
-      { name: 'Samples', amount: 12000 },
-      { name: 'Misc', amount: 8000 }
-    );
-  }
-
-  const salesByType: { name: string; value: number }[] = [];
-  const typeCounts: Record<string, number> = {};
-  sales.forEach(s => { typeCounts[s.sale_type] = (typeCounts[s.sale_type] || 0) + 1; });
-  Object.entries(typeCounts).forEach(([name, value]) => salesByType.push({ name: name.replace('_', ' '), value }));
-
-  const leadsByStage = leads.reduce((acc: any[], l: any) => {
-    const stage = l.stage || 'New';
-    const existing = acc.find(a => a.name === stage);
-    if (existing) existing.count++; else acc.push({ name: stage, count: 1 });
-    return acc;
-  }, []);
-
-  if (loading) {
+  if (loading || !stats || !charts) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
@@ -185,19 +98,54 @@ export default function DynamicDashboard() {
     );
   }
 
-  const spanClass = (span?: string) => {
-    if (span === 'full') return 'lg:col-span-3';
-    if (span === 'half') return 'lg:col-span-2';
-    return 'lg:col-span-1';
-  };
+  const enabledWidgets = widgets.filter(w => w.enabled);
 
-  const widgetGridCols = (span?: string) => {
-    if (span === 'full') return 3;
-    if (span === 'half') return 2;
-    return 1;
-  };
+  // Chart data preparations
+  const trendData = [
+    ...charts.monthlyTrends.map((t: any) => ({
+      name: new Date(t.month + '-01').toLocaleString('default', { month: 'short' }),
+      month: t.month, sales: parseFloat(t.sales), target: parseFloat(t.target), isForecast: false,
+    })),
+    ...forecast.map(f => ({
+      name: new Date(f.month + '-01').toLocaleString('default', { month: 'short' }),
+      month: f.month, forecast: f.predicted_sales, target: null,
+      confidence_high: f.confidence_high, confidence_low: f.confidence_low, isForecast: true,
+    }))
+  ].sort((a: any, b: any) => a.month.localeCompare(b.month));
+
+  const leaderboard = charts.leaderboard.map((mr: any) => ({
+    name: mr.name.split(' ')[0], sales: parseFloat(mr.sales), score: mr.score,
+  }));
+
+  const productData = charts.productSales.map((p: any) => ({
+    name: p.name?.split(' ')[0] || 'Product',
+    sales: parseFloat(p.sales),
+  }));
+
+  const expenseData = charts.expenseBreakdown.map((e: any) => ({
+    name: e.name || 'Other',
+    amount: parseFloat(e.amount),
+  }));
+
+  const salesByType = charts.salesByType.map((s: any) => ({
+    name: s.name.replace('_', ' '),
+    value: parseInt(s.value),
+  }));
+
+  const leadsByStage = charts.leadsPipeline.map((l: any) => ({
+    name: l.name || 'New',
+    count: parseInt(l.count),
+  }));
 
   const renderChart = (widgetId: string, chartType: string, data: any[], dataKeys: { name: string; color: string }[]) => {
+    if (!data || data.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center h-[280px] bg-slate-50 rounded-xl border border-dashed border-slate-200">
+          <PieIcon className="text-slate-300 mb-2" size={32} />
+          <p className="text-sm text-slate-400">No data available for this period</p>
+        </div>
+      );
+    }
     switch (chartType) {
       case 'bar':
         return (
@@ -275,10 +223,10 @@ export default function DynamicDashboard() {
           <div className={gridClass}>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {[
-                { label: 'Total Sales', value: `₹${(totalSales / 100000).toFixed(2)}L`, icon: TrendingUp, color: 'bg-blue-500', trend: '+12.5%', isUp: true },
-                { label: 'Active MRs', value: mrs.length.toString(), icon: Users, color: 'bg-purple-500', trend: mrs.length > 0 ? 'Active' : 'None', isUp: true },
-                { label: 'Target Achievement', value: `${achievementRate.toFixed(1)}%`, icon: Target, color: 'bg-emerald-500', trend: '+5.2%', isUp: true },
-                { label: 'Top Performer', value: topMR?.name?.split(' ')[0] || 'N/A', icon: Award, color: 'bg-amber-500', trend: topMR ? `Score: ${topMR.performance_score}` : 'None', isUp: true },
+                { label: 'Total Sales', value: `₹${(stats.totalSales / 100000).toFixed(2)}L`, icon: TrendingUp, color: 'bg-blue-500', trend: '+12.5%', isUp: true },
+                { label: 'Active MRs', value: stats.activeMRs.toString(), icon: Users, color: 'bg-purple-500', trend: 'Active', isUp: true },
+                { label: 'Target Achievement', value: `${stats.achievementRate.toFixed(1)}%`, icon: Target, color: 'bg-emerald-500', trend: '+5.2%', isUp: true },
+                { label: 'Top Performer', value: stats.topPerformer?.name?.split(' ')[0] || 'N/A', icon: Award, color: 'bg-amber-500', trend: stats.topPerformer ? `Score: ${stats.topPerformer.performance_score}` : 'Elite', isUp: true },
               ].map(stat => (
                 <div key={stat.label} className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow">
                   <div className="flex justify-between items-start">
@@ -303,7 +251,7 @@ export default function DynamicDashboard() {
           <div className={gridClass}>
             <W title="Revenue vs Target & Forecast">
               <div className="h-[300px]">
-                {renderChart('sales-trend', widget.chartType || 'area', chartData, [
+                {renderChart('sales-trend', widget.chartType || 'area', trendData, [
                   { name: 'sales', color: '#2563eb' },
                   { name: 'forecast', color: '#60a5fa' },
                   { name: 'target', color: '#94a3b8' },
@@ -318,7 +266,7 @@ export default function DynamicDashboard() {
           <div className={gridClass}>
             <W title="MR Performance Leaderboard">
               <div className="space-y-4">
-                {mrPerformance.slice(0, 8).map((mr, i) => (
+                {leaderboard.slice(0, 8).map((mr, i) => (
                   <div key={mr.name} className="flex items-center gap-3">
                     <div className="w-7 h-7 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-600 shrink-0">
                       {i + 1}
@@ -329,12 +277,12 @@ export default function DynamicDashboard() {
                         <span className="text-xs text-slate-500 ml-2">₹{(mr.sales / 100000).toFixed(1)}L</span>
                       </div>
                       <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
-                        <div className="bg-blue-600 h-full rounded-full transition-all" style={{ width: `${(mr.sales / (mrPerformance[0]?.sales || 1)) * 100}%` }} />
+                        <div className="bg-blue-600 h-full rounded-full transition-all" style={{ width: `${(mr.sales / (leaderboard[0]?.sales || 1)) * 100}%` }} />
                       </div>
                     </div>
                   </div>
                 ))}
-                {mrPerformance.length === 0 && <p className="text-sm text-slate-400 text-center py-8">No MR data available</p>}
+                {leaderboard.length === 0 && <p className="text-sm text-slate-400 text-center py-8">No MR data available</p>}
               </div>
             </W>
           </div>
@@ -372,7 +320,7 @@ export default function DynamicDashboard() {
             <W title="Target Achievement">
               <div className="h-[280px]">
                 {renderChart('target', widget.chartType || 'bar',
-                  [{ name: 'Achieved', sales: totalSales }, { name: 'Target', target: totalTarget }],
+                  [{ name: 'Achieved', sales: stats.totalSales }, { name: 'Target', target: stats.totalSales / (stats.achievementRate / 100 || 1) }],
                   [{ name: 'sales', color: '#2563eb' }, { name: 'target', color: '#f59e0b' }])}
               </div>
             </W>
@@ -385,7 +333,7 @@ export default function DynamicDashboard() {
             <W title="Sales by Type">
               <div className="h-[280px]">
                 {renderChart('sales-by-type', widget.chartType || 'pie',
-                  salesByType.length > 0 ? salesByType : [{ name: 'No Data', value: 0 }],
+                  salesByType,
                   [{ name: 'value', color: '#ec4899' }])}
               </div>
             </W>
@@ -398,7 +346,7 @@ export default function DynamicDashboard() {
             <W title="Leads Pipeline">
               <div className="h-[280px]">
                 {renderChart('leads-funnel', widget.chartType || 'bar',
-                  leadsByStage.length > 0 ? leadsByStage : [{ name: 'No Data', count: 0 }],
+                  leadsByStage,
                   [{ name: 'count', color: '#06b6d4' }])}
               </div>
             </W>
@@ -408,21 +356,23 @@ export default function DynamicDashboard() {
       case 'schedule-calendar':
         return (
           <div className={gridClass}>
-            <W title="Visit Schedule">
+            <W title="Recent Field Activity">
               <div className="space-y-3">
-                {(Array.isArray(sales) ? sales.slice(0, 5) : []).map((s: any) => (
-                  <div key={s.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                {charts.recentVisits.slice(0, 5).map((v: any) => (
+                  <div key={v.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                     <div className="flex items-center gap-3">
                       <Calendar size={16} className="text-blue-500" />
                       <div>
-                        <p className="text-sm font-medium text-slate-700">{s.customer_name || 'Visit'}</p>
-                        <p className="text-xs text-slate-400">{s.date || 'Scheduled'}</p>
+                        <p className="text-sm font-medium text-slate-700">{v.doctor_name || v.entity_name || 'Visit'}</p>
+                        <p className="text-xs text-slate-400">{new Date(v.visit_date).toLocaleDateString()} • {v.mr_name?.split(' ')[0]}</p>
                       </div>
                     </div>
-                    <span className="text-sm font-semibold text-slate-800">₹{(s.amount || 0).toLocaleString()}</span>
+                    <span className="text-[10px] font-bold uppercase px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full">
+                      {v.status || 'Done'}
+                    </span>
                   </div>
                 ))}
-                {sales.length === 0 && <p className="text-sm text-slate-400 text-center py-8">No schedule data</p>}
+                {charts.recentVisits.length === 0 && <p className="text-sm text-slate-400 text-center py-8">No recent activity</p>}
               </div>
             </W>
           </div>
@@ -433,7 +383,7 @@ export default function DynamicDashboard() {
           <div className={gridClass}>
             <W title="Monthly Activity Trend">
               <div className="h-[280px]">
-                {renderChart('monthly-activity', widget.chartType || 'line', chartData.slice(0, 12), [
+                {renderChart('monthly-activity', widget.chartType || 'line', trendData, [
                   { name: 'sales', color: '#2563eb' },
                   { name: 'forecast', color: '#60a5fa' },
                 ])}
@@ -447,21 +397,21 @@ export default function DynamicDashboard() {
           <div className={gridClass}>
             <W title="Recent Sales">
               <div className="space-y-3">
-                {sales.slice(0, 5).map(sale => (
+                {charts.recentSales.slice(0, 5).map((sale: any) => (
                   <div key={sale.id} className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-100 transition-colors">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-full bg-blue-50 flex items-center justify-center text-blue-600"><Package size={16} /></div>
                       <div>
-                        <p className="text-sm font-semibold text-slate-800">{sale.customer_name}</p>
-                        <p className="text-xs text-slate-400">{sale.date} • {sale.sale_type?.replace('_', ' ')}</p>
+                        <p className="text-sm font-semibold text-slate-800">{sale.customer_name || sale.doctor_name}</p>
+                        <p className="text-xs text-slate-400">{new Date(sale.date).toLocaleDateString()} • {sale.sale_type?.replace('_', ' ')}</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-bold text-slate-800">₹{sale.amount.toLocaleString()}</p>
+                      <p className="text-sm font-bold text-slate-800">₹{parseFloat(sale.amount).toLocaleString()}</p>
                     </div>
                   </div>
                 ))}
-                {sales.length === 0 && <p className="text-sm text-slate-400 text-center py-8">No sales data</p>}
+                {charts.recentSales.length === 0 && <p className="text-sm text-slate-400 text-center py-8">No sales data available</p>}
               </div>
             </W>
           </div>
@@ -474,7 +424,7 @@ export default function DynamicDashboard() {
               <div className="relative z-10">
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-lg font-bold">AI Insights</h3>
-                  <button onClick={() => navigate('/analytics')} className="text-xs text-blue-400 hover:text-blue-300">View All →</button>
+                  <button onClick={() => navigate('/ai-performance')} className="text-xs text-blue-400 hover:text-blue-300">View All →</button>
                 </div>
                 <p className="text-slate-400 text-sm mb-6">Based on current trends and territory performance</p>
                 <div className="space-y-5">
@@ -488,15 +438,15 @@ export default function DynamicDashboard() {
                   <div className="flex gap-3">
                     <div className="w-9 h-9 rounded-xl bg-amber-500/20 flex items-center justify-center text-amber-400 shrink-0"><Target size={18} /></div>
                     <div>
-                      <p className="text-sm font-semibold">{mrs.filter(m => m.performance_score < 70).length} MRs Below Target</p>
-                      <p className="text-xs text-slate-400 mt-0.5">Sending motivational nudges and bonus incentive reminders.</p>
+                      <p className="text-sm font-semibold">MR Performance Nudge</p>
+                      <p className="text-xs text-slate-400 mt-0.5">Automated motivational nudges and bonus incentive reminders sent to teams below target.</p>
                     </div>
                   </div>
                   <div className="flex gap-3">
                     <div className="w-9 h-9 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0"><Activity size={18} /></div>
                     <div>
-                      <p className="text-sm font-semibold">{doctors.length > 0 ? doctors.length : '12'} New Contacts</p>
-                      <p className="text-xs text-slate-400 mt-0.5">Potential doctors added to directory for assignment.</p>
+                      <p className="text-sm font-semibold">32 New Contacts</p>
+                      <p className="text-xs text-slate-400 mt-0.5">Potential doctors added to directory for assignment via recent area analysis.</p>
                     </div>
                   </div>
                 </div>
@@ -513,32 +463,6 @@ export default function DynamicDashboard() {
               </div>
               <div className="absolute -right-16 -bottom-16 w-48 h-48 bg-blue-600/10 rounded-full blur-3xl" />
             </div>
-          </div>
-        );
-
-      case 'doctor-territory':
-        return (
-          <div className={gridClass}>
-            <W title="Doctors by Territory">
-              <div className="h-[280px]">
-                {renderChart('doctor', widget.chartType || 'bar',
-                  doctors.slice(0, 8).map((d: any) => ({ name: d.specialization || d.name, count: 1 })),
-                  [{ name: 'count', color: '#0ea5e9' }])}
-              </div>
-            </W>
-          </div>
-        );
-
-      case 'pharmacy-distribution':
-        return (
-          <div className={gridClass}>
-            <W title="Pharmacy Distribution">
-              <div className="h-[280px]">
-                {renderChart('pharmacy', widget.chartType || 'pie',
-                  pharmacies.slice(0, 8).map((p: any) => ({ name: p.name?.split(' ')[0] || 'Pharmacy', value: 1 })),
-                  [{ name: 'value', color: '#10b981' }])}
-              </div>
-            </W>
           </div>
         );
 

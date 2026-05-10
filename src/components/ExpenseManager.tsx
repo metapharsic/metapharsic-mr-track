@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
+import ReactMarkdown from 'react-markdown';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   Pie, Cell, AreaChart, Area
@@ -119,6 +120,9 @@ export default function ExpenseManager() {
   const { user } = useAuth();
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [mrs, setMrs] = useState<MR[]>([]);
+  const [pharmacies, setPharmacies] = useState<Pharmacy[]>([]);
+  const [hospitals, setHospitals] = useState<Hospital[]>([]);
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
@@ -134,7 +138,11 @@ export default function ExpenseManager() {
     amount: '',
     date: new Date().toISOString().split('T')[0],
     mr_id: 0,
-    status: 'pending'
+    status: 'pending',
+    entity_type: 'doctor' as 'doctor' | 'pharmacy' | 'hospital',
+    doctor_id: 0,
+    pharmacy_id: 0,
+    hospital_id: 0
   });
 
   useEffect(() => {
@@ -146,14 +154,20 @@ export default function ExpenseManager() {
   useEffect(() => {
     Promise.all([
       api.expenses.getAll(),
-      api.mrs.getAll()
-    ]).then(([e, m]) => {
+      api.mrs.getAll(),
+      api.doctors.getAll(),
+      api.pharmacies.getAll(),
+      api.hospitals.getAll()
+    ]).then(([e, m, d, p, h]) => {
       let filtered = e || [];
       if (user?.role === 'mr') {
         filtered = filtered.filter((exp: Expense) => exp.mr_id === user.mr_id);
       }
       setExpenses(filtered);
       setMrs(m || []);
+      setDoctors(d || []);
+      setPharmacies(p || []);
+      setHospitals(h || []);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
@@ -161,24 +175,25 @@ export default function ExpenseManager() {
   const getMrName = (id: number | null) => mrs.find(m => m.id === id)?.name || 'Admin';
 
   // Compute analytics
-  const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
-  const pendingTotal = expenses.filter(e => e.status === 'pending').reduce((sum, e) => sum + e.amount, 0);
-  const approvedTotal = expenses.filter(e => e.status === 'approved').reduce((sum, e) => sum + e.amount, 0);
+  const totalExpenses = expenses.reduce((sum, e) => sum + Number(e.amount), 0);
+  const pendingTotal = expenses.filter(e => e.status === 'pending').reduce((sum, e) => sum + Number(e.amount), 0);
+  const approvedTotal = expenses.filter(e => e.status === 'approved').reduce((sum, e) => sum + Number(e.amount), 0);
   const avgExpense = expenses.length ? Math.round(totalExpenses / expenses.length) : 0;
 
   // Category breakdown
   const categoryBreakdown = expenses.reduce((acc: Array<{ name: string; value: number; count: number }>, e) => {
     const cat = e.category || 'Other';
+    const amount = Number(e.amount);
     const existing = acc.find(a => a.name === cat);
-    if (existing) { existing.value += e.amount; existing.count++; }
-    else acc.push({ name: cat, value: e.amount, count: 1 });
+    if (existing) { existing.value += amount; existing.count++; }
+    else acc.push({ name: cat, value: amount, count: 1 });
     return acc;
   }, []);
 
   // Monthly trend
   const monthlyTrend = expenses.reduce((acc: Record<string, number>, e) => {
     const month = e.date?.substring(0, 7) || '2024-01';
-    acc[month] = (acc[month] || 0) + e.amount;
+    acc[month] = (acc[month] || 0) + Number(e.amount);
     return acc;
   }, {});
   const monthlyData = Object.entries(monthlyTrend)
@@ -191,41 +206,56 @@ export default function ExpenseManager() {
   // MR-wise spending
   const mrSpending = mrs.map(mr => {
     const mrExpenses = expenses.filter(e => e.mr_id === mr.id);
-    return { name: mr.name.split(' ')[0], amount: mrExpenses.reduce((s, e) => s + e.amount, 0), count: mrExpenses.length };
+    return { name: mr.name.split(' ')[0], amount: mrExpenses.reduce((s, e) => s + Number(e.amount), 0), count: mrExpenses.length };
   }).sort((a, b) => b.amount - a.amount).slice(0, 8);
 
   // AI insights for expense reduction
   const aiInsights = generateExpenseInsights(expenses, categoryBreakdown, mrSpending, monthlyData, totalExpenses);
 
-  const handleAddExpense = () => {
+  const handleAddExpense = async () => {
     if (!formData.description || !formData.amount || !formData.category) {
       alert('Please fill in all required fields');
       return;
     }
 
-    const newExpense: any = {
-      id: expenses.length + 1,
-      description: formData.description,
-      category: formData.category,
-      amount: parseFloat(formData.amount),
-      date: formData.date,
-      mr_id: formData.mr_id,
-      status: 'pending'
-    };
+    try {
+      const payload: any = {
+        description: formData.description,
+        category: formData.category,
+        amount: parseFloat(formData.amount),
+        date: formData.date,
+        mr_id: formData.mr_id || (user?.mr_id || 0),
+        status: 'pending'
+      };
 
-    // Save to server
-    api.expenses.create(newExpense).catch(() => {});
+      // Add entity linkage if category is Samples
+      if (formData.category === 'Samples') {
+        payload.entity_type = formData.entity_type;
+        if (formData.entity_type === 'doctor' && formData.doctor_id) payload.doctor_id = formData.doctor_id;
+        if (formData.entity_type === 'pharmacy' && formData.pharmacy_id) payload.pharmacy_id = formData.pharmacy_id;
+        if (formData.entity_type === 'hospital' && formData.hospital_id) payload.hospital_id = formData.hospital_id;
+      }
 
-    setExpenses([newExpense, ...expenses]);
-    setFormData({
-      description: '',
-      category: '',
-      amount: '',
-      date: new Date().toISOString().split('T')[0],
-      mr_id: 1,
-      status: 'pending'
-    });
-    setShowAddForm(false);
+      const created = await api.expenses.create(payload);
+      setExpenses([created, ...expenses]);
+      
+      setFormData({
+        description: '',
+        category: '',
+        amount: '',
+        date: new Date().toISOString().split('T')[0],
+        mr_id: user?.mr_id || 0,
+        status: 'pending',
+        entity_type: 'doctor',
+        doctor_id: 0,
+        pharmacy_id: 0,
+        hospital_id: 0
+      });
+      setShowAddForm(false);
+    } catch (error) {
+      console.error("Failed to add expense", error);
+      alert("Error adding expense. Please check your inputs.");
+    }
   };
 
   // AI Chat handler
@@ -233,11 +263,23 @@ export default function ExpenseManager() {
     if (!aiPrompt.trim()) return;
     setAiThinking(true);
     setAiResponse('');
-    const summary = `Total: ₹${(totalExpenses/1000).toFixed(0)}K, ${expenses.length} expenses. Categories: ${categoryBreakdown.slice(0,3).map(c=>`${c.name}(₹${(c.value/1000).toFixed(0)}K)`).join(', ')}. Top spenders: ${mrSpending.slice(0,3).map(m=>`${m.name}(₹${(m.amount/1000).toFixed(0)}K)`).join(', ')}.`;
+    
+    // Construct a rich JSON payload for the AI backend
+    const advancedExpenseSummary = JSON.stringify({
+      overview: { totalExpenses, pendingTotal, approvedTotal, avgExpense, transactionCount: expenses.length },
+      monthlyTrend: monthlyData,
+      categoryBreakdown,
+      topSpenders: mrSpending.slice(0, 5),
+      recentExpenses: expenses.slice(0, 15).map(e => ({
+        date: e.date, amount: e.amount, category: e.category, mr: getMrName(e.mr_id), description: e.description, status: e.status
+      })),
+      userRole: user?.role
+    });
+
     try {
       const { geminiService } = await import('../services/geminiService');
       try {
-        const result = await geminiService.analyzeExpenses(aiPrompt, summary);
+        const result = await geminiService.analyzeExpenses(aiPrompt, advancedExpenseSummary);
         if (result) { setAiResponse(result); setAiThinking(false); return; }
       } catch {}
       // Fallback
@@ -449,8 +491,8 @@ export default function ExpenseManager() {
               </div>
               {aiResponse && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                  className="mt-3 bg-slate-800 rounded-xl p-4 text-sm text-slate-300 whitespace-pre-wrap">
-                  {aiResponse}
+                  className="mt-3 bg-slate-800 rounded-xl p-5 text-sm text-slate-300 prose prose-invert prose-sm max-w-none">
+                  <ReactMarkdown>{aiResponse}</ReactMarkdown>
                 </motion.div>
               )}
             </div>
@@ -515,22 +557,34 @@ export default function ExpenseManager() {
             <div className="flex items-center justify-between md:justify-end gap-8">
               <div className="text-right">
                 <p className="text-lg font-bold text-slate-900">₹{expense.amount.toLocaleString()}</p>
-                <div className="flex items-center gap-1 justify-end mt-1">
-                  {expense.status === 'approved' ? (
-                    <>
-                      <CheckCircle2 size={12} className="text-emerald-500" />
-                      <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Approved</span>
-                    </>
-                  ) : expense.status === 'rejected' ? (
-                    <>
-                      <AlertCircle size={12} className="text-rose-500" />
-                      <span className="text-[10px] font-bold text-rose-600 uppercase tracking-wider">Rejected</span>
-                    </>
-                  ) : (
-                    <>
-                      <Clock size={12} className="text-amber-500" />
-                      <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Pending Approval</span>
-                    </>
+                <div className="flex flex-col items-end gap-1 mt-1">
+                  <div className="flex items-center gap-1">
+                    {expense.status === 'approved' ? (
+                      <>
+                        <CheckCircle2 size={12} className="text-emerald-500" />
+                        <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">Approved</span>
+                      </>
+                    ) : expense.status === 'rejected' ? (
+                      <>
+                        <AlertCircle size={12} className="text-rose-500" />
+                        <span className="text-[10px] font-bold text-rose-600 uppercase tracking-wider">Rejected</span>
+                      </>
+                    ) : (
+                      <>
+                        <Clock size={12} className="text-amber-500" />
+                        <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Pending Approval</span>
+                      </>
+                    )}
+                  </div>
+                  {expense.is_auto_approved && (
+                    <span className="flex items-center gap-1 px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded text-[9px] font-black uppercase tracking-tighter border border-blue-100 animate-pulse">
+                      <Zap size={8} fill="currentColor" /> Auto-Approved
+                    </span>
+                  )}
+                  {expense.category === 'Samples' && (expense.doctor_id || expense.pharmacy_id || expense.hospital_id) && (
+                    <span className="text-[10px] text-slate-400 italic">
+                      Linked to {expense.entity_type}
+                    </span>
                   )}
                 </div>
               </div>
@@ -587,6 +641,68 @@ export default function ExpenseManager() {
                   <option value="Other">Other</option>
                 </select>
               </div>
+
+              {formData.category === 'Samples' && (
+                <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl space-y-4 animate-in fade-in slide-in-from-top-2">
+                  <div>
+                    <label className="block text-xs font-bold text-blue-700 mb-2 uppercase tracking-wider">Link to Entity *</label>
+                    <div className="flex gap-2 mb-3">
+                      {(['doctor', 'pharmacy', 'hospital'] as const).map(type => (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => setFormData({ ...formData, entity_type: type, doctor_id: 0, pharmacy_id: 0, hospital_id: 0 })}
+                          className={cn(
+                            "flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all",
+                            formData.entity_type === type ? "bg-blue-600 text-white shadow-md" : "bg-white text-blue-600 border border-blue-200 hover:bg-blue-100"
+                          )}
+                        >
+                          {type}
+                        </button>
+                      ))}
+                    </div>
+
+                    {formData.entity_type === 'doctor' && (
+                      <select
+                        value={formData.doctor_id}
+                        onChange={(e) => setFormData({ ...formData, doctor_id: parseInt(e.target.value) })}
+                        className="w-full px-3 py-2 text-sm bg-white border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      >
+                        <option value="0">Select Doctor</option>
+                        {doctors.map(d => (
+                          <option key={d.id} value={d.id}>{d.name}</option>
+                        ))}
+                      </select>
+                    )}
+
+                    {formData.entity_type === 'pharmacy' && (
+                      <select
+                        value={formData.pharmacy_id}
+                        onChange={(e) => setFormData({ ...formData, pharmacy_id: parseInt(e.target.value) })}
+                        className="w-full px-3 py-2 text-sm bg-white border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      >
+                        <option value="0">Select Pharmacy</option>
+                        {pharmacies.map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    )}
+
+                    {formData.entity_type === 'hospital' && (
+                      <select
+                        value={formData.hospital_id}
+                        onChange={(e) => setFormData({ ...formData, hospital_id: parseInt(e.target.value) })}
+                        className="w-full px-3 py-2 text-sm bg-white border border-blue-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      >
+                        <option value="0">Select Hospital</option>
+                        {hospitals.map(h => (
+                          <option key={h.id} value={h.id}>{h.name}</option>
+                        ))}
+                      </select>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2">Amount (₹) *</label>

@@ -5,11 +5,12 @@ import { api } from '../services/api';
 import { MR } from '../types';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
+import ReactMarkdown from 'react-markdown';
 import {
   Calendar, MapPin, CheckCircle2,
   User, Phone, Navigation, X, Loader2, Plus, LogIn,
   Building2, ShoppingBag, Stethoscope, ChevronRight, ChevronDown,
-  ArrowLeft, Eye, Edit3
+  ArrowLeft, Eye, Edit3, DollarSign, AlertTriangle, Brain, Sparkles
 } from 'lucide-react';
 
 const today = new Date().toISOString().split('T')[0];
@@ -94,6 +95,22 @@ export default function DailyCallPlan() {
     }
   }, [user?.territory]);
 
+  const [credits, setCredits] = useState<any[]>([]);
+  const [aiScript, setAiScript] = useState<Record<number, string>>({});
+  const [generatingAI, setGeneratingAI] = useState<Record<number, boolean>>({});
+
+  const generateCollectionScript = async (planId: number, entityName: string) => {
+    setGeneratingAI(prev => ({ ...prev, [planId]: true }));
+    try {
+      const { script } = await api.intelligence.getCollectionScript(entityName);
+      setAiScript(prev => ({ ...prev, [planId]: script }));
+    } catch (e) {
+      setAiScript(prev => ({ ...prev, [planId]: "Failed to generate AI intelligence. Please ensure database is connected." }));
+    } finally {
+      setGeneratingAI(prev => ({ ...prev, [planId]: false }));
+    }
+  };
+
   // Load plans
   useEffect(() => {
     if (!effectiveMrId) return;
@@ -101,10 +118,12 @@ export default function DailyCallPlan() {
     Promise.all([
       api.dailyCallPlan.getAll(effectiveMrId, selectedDate),
       api.attendance.getAll(effectiveMrId),
-    ]).then(([p, a]) => {
+      api.credits.getAll()
+    ]).then(([p, a, c]) => {
       setPlans(p || []);
       const todayAtt = a?.find((at: any) => at.date === selectedDate && at.mr_id === effectiveMrId);
       setAttendance(todayAtt ?? null);
+      setCredits(c || []);
       setLoading(false);
     }).catch(() => { setLoading(false); setPlans([]); });
   }, [effectiveMrId, selectedDate]);
@@ -517,9 +536,14 @@ export default function DailyCallPlan() {
               skipped: { bg: 'bg-red-100', text: 'text-red-700', label: 'Skipped' },
             };
             const sc = statusConfig[plan.status] ?? statusConfig.planned;
+            const creditInfo = credits.find(c => c.entity_name === plan.entity_name);
+            const isCollectionPriority = creditInfo && (creditInfo.status === 'overdue' || creditInfo.status === 'blocked' || creditInfo.risk_score > 70);
 
             return (
-              <div key={plan.id} className="bg-white rounded-2xl border overflow-hidden">
+              <div key={plan.id} className={cn(
+                "bg-white rounded-2xl border overflow-hidden transition-all",
+                isCollectionPriority ? "border-amber-200 shadow-md shadow-amber-50" : "border-gray-200"
+              )}>
                 <button
                   onClick={() => setExpandedPlanId(isExpanded ? null : plan.id)}
                   className="w-full p-4 flex items-center gap-3 text-left hover:bg-gray-50 transition-colors"
@@ -527,6 +551,11 @@ export default function DailyCallPlan() {
                   {/* Time */}
                   <div className="flex-shrink-0 w-16 text-center">
                     <p className="text-sm font-bold text-gray-900">{plan.planned_time?.slice(0, 5) || '--:--'}</p>
+                    {isCollectionPriority && (
+                      <div className="mt-1 flex justify-center">
+                        <AlertTriangle size={12} className="text-amber-600 animate-pulse" />
+                      </div>
+                    )}
                   </div>
 
                   {/* Entity icon */}
@@ -539,6 +568,16 @@ export default function DailyCallPlan() {
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-semibold text-gray-900 truncate">{plan.entity_name}</span>
                       {tierBadge(plan.tier ?? 'C')}
+                      {creditInfo?.risk_level && (
+                         <span className={cn(
+                           "px-1.5 py-0.5 rounded-[4px] text-[8px] font-bold uppercase",
+                           creditInfo.risk_level === 'Critical' ? "bg-red-600 text-white" :
+                           creditInfo.risk_level === 'High' ? "bg-orange-100 text-orange-700" :
+                           "bg-amber-100 text-amber-700"
+                         )}>
+                           {creditInfo.risk_level} Risk
+                         </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
                       {plan.clinic && <span className="text-xs text-gray-500 truncate">{plan.clinic}</span>}
@@ -547,9 +586,16 @@ export default function DailyCallPlan() {
                   </div>
 
                   {/* Status badge */}
-                  <span className={cn('px-2 py-1 rounded-lg text-[10px] font-bold uppercase flex-shrink-0', sc.bg, sc.text)}>
-                    {sc.label}
-                  </span>
+                  <div className="flex flex-col items-end gap-1">
+                    <span className={cn('px-2 py-1 rounded-lg text-[10px] font-bold uppercase flex-shrink-0', sc.bg, sc.text)}>
+                      {sc.label}
+                    </span>
+                    {isCollectionPriority && (
+                      <span className="text-[9px] font-bold text-amber-600 flex items-center gap-0.5 bg-amber-50 px-1.5 py-0.5 rounded">
+                         <DollarSign size={8} /> Collection Focus
+                      </span>
+                    )}
+                  </div>
 
                   {/* Chevron */}
                   {isExpanded ? <ChevronDown size={16} className="text-gray-400 flex-shrink-0" /> : <ChevronRight size={16} className="text-gray-400 flex-shrink-0" />}
@@ -608,6 +654,39 @@ export default function DailyCallPlan() {
                                 <Eye size={12} /> View Full Outcome
                               </button>
                             </div>
+                          </div>
+                        )}
+
+                        {/* AI Collection Intelligence */}
+                        {isCollectionPriority && (
+                          <div className="mt-3 pt-3 border-t">
+                             <div className="flex items-center justify-between mb-2">
+                                <span className="text-[10px] font-bold text-purple-700 flex items-center gap-1">
+                                   <Brain size={12} /> AI Collection Assistant
+                                </span>
+                                <button 
+                                  onClick={() => generateCollectionScript(plan.id, plan.entity_name)}
+                                  disabled={generatingAI[plan.id]}
+                                  className="text-[9px] font-bold text-purple-600 hover:text-purple-800 underline underline-offset-2 flex items-center gap-1"
+                                >
+                                  {generatingAI[plan.id] ? <Loader2 size={10} className="animate-spin" /> : <Sparkles size={10} />}
+                                  {aiScript[plan.id] ? 'Regenerate Script' : 'Get Negotiation Script'}
+                                </button>
+                             </div>
+                             
+                             {aiScript[plan.id] && (
+                               <motion.div 
+                                 initial={{ opacity: 0, height: 0 }}
+                                 animate={{ opacity: 1, height: 'auto' }}
+                                 className="bg-purple-50 border border-purple-100 rounded-xl p-3"
+                               >
+                                  <div className="prose prose-sm max-w-none text-purple-900 text-[10px] leading-relaxed">
+                                    <ReactMarkdown>
+                                      {aiScript[plan.id]}
+                                    </ReactMarkdown>
+                                  </div>
+                               </motion.div>
+                             )}
                           </div>
                         )}
 

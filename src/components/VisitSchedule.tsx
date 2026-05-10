@@ -39,61 +39,86 @@ export default function VisitSchedule() {
   const [formNotes, setFormNotes] = useState('');
   const [formPriority, setFormPriority] = useState<'high' | 'medium' | 'low'>('medium');
   const [submitting, setSubmitting] = useState(false);
+  const [conflictError, setConflictError] = useState<string | null>(null);
 
-  // AI forecast data
   const [aiForecasts, setAiForecasts] = useState<Record<number, { lead_probability: number; lead_status: string; reasoning: string }>>({});
   const [forecastLoading, setForecastLoading] = useState(false);
 
+  const [aiAssigning, setAiAssigning] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<any>(null);
+
   useEffect(() => {
+    setLoading(true);
+    const timer = setTimeout(() => setLoading(false), 5000);
+
     Promise.all([
-      api.visits.getSchedules(),
-      api.mrs.getAll(),
-      api.visits.getAll(),
+      api.visits.getSchedules().catch(() => []),
+      api.mrs.getAll().catch(() => []),
+      api.visits.getAll().catch(() => []),
       api.doctors.getAll().catch(() => []),
       api.pharmacies.getAll().catch(() => []),
       api.hospitals.getAll().catch(() => []),
     ]).then(([s, m, v, d, p, h]) => {
-      let filtered = s;
-      if (user?.role === 'mr') {
-        filtered = filtered.filter((sched: any) => sched.mr_id === user.mr_id);
+      clearTimeout(timer);
+      
+      let filtered = s || [];
+      const currentUserStr = localStorage.getItem('metapharsic_current_user');
+      if (currentUserStr) {
+        try {
+          const currentUser = JSON.parse(currentUserStr);
+          if (currentUser?.role === 'mr' && currentUser.mr_id) {
+            filtered = filtered.filter((sched: any) => sched.mr_id === currentUser.mr_id);
+          }
+        } catch (e) {}
       }
+
       setSchedules(filtered);
-      setMrs(m);
-      setVisits(v);
+      setMrs(m || []);
+      setVisits(v || []);
       setDoctors(d || []);
       setPharmacies(p || []);
       setHospitals(h || []);
       setLoading(false);
+    }).catch(err => {
+      console.error('VisitSchedule loading error:', err);
+      setLoading(false);
     });
+    
+    return () => clearTimeout(timer);
   }, []);
 
   // Run AI forecast on today's scheduled visits
   useEffect(() => {
     if (schedules.length === 0 || forecastLoading) return;
-    setForecastLoading(true);
-    const forecasts: Record<number, any> = {};
+    
     const runForecast = async () => {
-      for (const visit of schedules.slice(0, 10)) {
-        const entityVisits = visits.filter(v =>
-          (v.entity_name === visit.doctor_name || v.doctor_name === visit.doctor_name) && v.status === 'completed'
-        );
-        const forecast = await geminiService.forecastEntityLead(
-          { name: visit.doctor_name, type: 'doctor', tier: 'B' },
-          entityVisits
-        );
-        if (forecast) {
-          forecasts[visit.id] = {
-            lead_probability: forecast.lead_probability,
-            lead_status: forecast.lead_status,
-            reasoning: forecast.reasoning,
-          };
+      setForecastLoading(true);
+      const forecasts: Record<number, any> = {};
+      try {
+        for (const visit of schedules.slice(0, 10)) {
+          const entityVisits = visits.filter(v =>
+            (v.entity_name === visit.doctor_name || v.doctor_name === visit.doctor_name) && v.status === 'completed'
+          );
+          const forecast = await geminiService.forecastEntityLead(
+            { name: visit.doctor_name, type: 'doctor', tier: 'B' },
+            entityVisits
+          );
+          if (forecast) {
+            forecasts[visit.id] = {
+              lead_probability: forecast.lead_probability,
+              lead_status: forecast.lead_status,
+              reasoning: forecast.reasoning,
+            };
+          }
         }
+        setAiForecasts(forecasts);
+      } catch (err) {
+        console.error('AI Forecast error:', err);
       }
-      setAiForecasts(forecasts);
       setForecastLoading(false);
     };
     runForecast();
-  }, [schedules.length]);
+  }, [schedules.length, visits]);
 
   const getMrName = (id: number) => mrs.find(m => m.id === id)?.name || 'Unknown MR';
 
@@ -105,50 +130,84 @@ export default function VisitSchedule() {
     });
   };
 
-  const handleAutoAssign = (entityOverride?: any) => {
+  const handleSmartAutoAssign = async (entityOverride?: any) => {
     const entityId = entityOverride?.id || formEntityId;
     if (!entityId) return;
     const allEntities = [...doctors, ...pharmacies, ...hospitals] as any[];
     const entity = entityOverride || allEntities.find(e => e.id === entityId);
-    if (entity) {
-      const territory = entity.territory || entity.area;
-      console.log('[VisitSchedule] Auto-assign: entity=', entity.name, 'territory=', territory);
-      console.log('[VisitSchedule] Available MRs:', mrs.map(m => ({ name: m.name, territory: m.territory })));
-      // Match: entity territory must be contained within the MR's territory string
-      const matchedMr = mrs.find(m => m.territory?.toLowerCase().includes(territory?.toLowerCase()));
-      if (matchedMr) {
-        console.log('[VisitSchedule] Auto-assigned MR:', matchedMr.name);
-        setFormMrId(matchedMr.id);
-      } else {
-        console.log('[VisitSchedule] No MR match found, using first MR:', mrs[0]?.name);
-        if (mrs.length > 0) setFormMrId(mrs[0].id);
+    
+    if (!entity) return;
+
+    setAiAssigning(true);
+    setAiSuggestions(null);
+
+    try {
+      const response = await fetch('/api/ai/auto-assign-visit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          entity_id: entity.id,
+          entity_type: formEntityType,
+          lat: entity.lat || 17.3850,
+          lng: entity.lng || 78.4867,
+          territory: entity.territory || entity.area
+        })
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        setAiSuggestions(result);
+        setFormMrId(result.best_mr.id);
       }
+    } catch (e) {
+      console.error('AI Auto-assign failed:', e);
+      const territory = entity.territory || entity.area;
+      const matchedMr = mrs.find(m => m.territory?.toLowerCase().includes(territory?.toLowerCase()));
+      if (matchedMr) setFormMrId(matchedMr.id);
+    } finally {
+      setAiAssigning(false);
     }
   };
 
   const handleSubmitSchedule = async () => {
     if (!formMrId || !formEntityId) return;
     setSubmitting(true);
+    setConflictError(null);
+
     const allEntities = [...doctors, ...pharmacies, ...hospitals] as any[];
     const entity = allEntities.find(e => e.id === formEntityId);
     try {
-      await api.visits.createSchedule({
-        mr_id: formMrId,
-        doctor_id: formEntityType === 'doctor' ? formEntityId : null,
-        doctor_name: entity?.name || 'Unknown',
-        clinic: entity?.clinic || entity?.name || 'Unknown',
-        scheduled_date: formDate,
-        scheduled_time: formTime,
-        purpose: formPurpose + (formNotes ? ` - ${formNotes}` : ''),
-        priority: formPriority,
+      const response = await fetch('/api/visit-schedules', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mr_id: formMrId,
+          doctor_id: formEntityType === 'doctor' ? formEntityId : null,
+          doctor_name: entity?.name || 'Unknown',
+          clinic: entity?.clinic || entity?.name || 'Unknown',
+          scheduled_date: formDate,
+          scheduled_time: formTime,
+          purpose: formPurpose + (formNotes ? ` - ${formNotes}` : ''),
+          priority: formPriority,
+        })
       });
-      // Refresh schedules
+
+      if (response.status === 409) {
+        const errData = await response.json();
+        setConflictError(errData.message);
+        setSubmitting(false);
+        return;
+      }
+
+      if (!response.ok) throw new Error('Failed to schedule');
+
       const updated = await api.visits.getSchedules();
       setSchedules(updated);
       setShowScheduleModal(false);
       resetForm();
-    } catch (e) {
+    } catch (e: any) {
       console.error('Failed to schedule:', e);
+      setConflictError(e.message || 'An unexpected error occurred');
     }
     setSubmitting(false);
   };
@@ -162,6 +221,8 @@ export default function VisitSchedule() {
     setFormPurpose('Routine Visit');
     setFormNotes('');
     setFormPriority('medium');
+    setConflictError(null);
+    setAiSuggestions(null);
   };
 
   const filteredEntities = (() => {
@@ -172,18 +233,8 @@ export default function VisitSchedule() {
   })();
 
   const todaySchedules = schedules.filter(s => s.scheduled_date === selectedDate);
-
-  // AI Summary for schedules
   const overdueCount = schedules.filter(s => s.status === 'scheduled' && new Date(s.scheduled_date) < new Date()).length;
   const highPriorityCount = schedules.filter(s => s.priority === 'high' && s.status === 'scheduled').length;
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
 
   return (
     <div className="p-8 space-y-8">
@@ -213,7 +264,6 @@ export default function VisitSchedule() {
         </div>
       </header>
 
-      {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
           <p className="text-xs text-slate-400 uppercase font-bold">Today's Visits</p>
@@ -234,7 +284,6 @@ export default function VisitSchedule() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-        {/* Calendar Sidebar */}
         <div className="lg:col-span-1 space-y-6">
           <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
             <h3 className="text-lg font-bold text-slate-900 mb-4">Calendar</h3>
@@ -279,15 +328,14 @@ export default function VisitSchedule() {
             </div>
           </div>
 
-          {/* AI Insights Panel */}
           <div className="bg-slate-900 p-6 rounded-2xl text-white">
             <h4 className="font-bold mb-4 flex items-center gap-2">
               <Brain size={18} className="text-purple-400" />
-              {showAIInsights ? 'AI Forecast' : 'AI Insights'}
+              AI Insights
             </h4>
-            {showAIInsights ? (
-              <div className="space-y-3">
-                {forecastLoading ? (
+            <div className="space-y-3">
+              {showAIInsights ? (
+                forecastLoading ? (
                   <div className="flex items-center gap-2 text-xs text-slate-400">
                     <Loader2 size={12} className="animate-spin" />Analyzing visits...
                   </div>
@@ -309,44 +357,32 @@ export default function VisitSchedule() {
                             f.lead_status === 'hot' ? "bg-green-700 text-white" :
                             f.lead_status === 'warm' ? "bg-amber-700 text-white" :
                             "bg-slate-600 text-slate-300"
-                          )}>{f.lead_status} — {f.lead_probability}%</span>
+                          )}>{f.lead_status}</span>
                         </div>
                         <p className="text-slate-400 text-[10px]">{f.reasoning}</p>
-                        <button onClick={() => openInspector(visit)} className="mt-1 text-purple-400 hover:text-purple-300 text-[10px] font-bold">View Details →</button>
                       </div>
                     );
                   })
                 ) : (
-                  <p className="text-xs text-slate-400">Schedule visits to see AI forecasts. Need completed visit data for analysis.</p>
-                )}
-                {!forecastLoading && (
-                  <div className="border-t border-slate-700 pt-3 mt-3">
-                    <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
-                      <AlertCircle size={12} className="text-amber-400" />
-                      <span>{overdueCount} overdue | {highPriorityCount} high priority</span>
-                    </div>
-                    <p className="text-[10px] text-slate-500">Route optimization could save ~12km of travel today.</p>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Route optimization for tomorrow could save 12km of travel.
-                  {highPriorityCount > 0 && ` ${highPriorityCount} high-potential visits need attention.`}
-                </p>
-                <button
-                  onClick={() => setShowAIInsights(true)}
-                  className="w-full mt-4 py-2 bg-purple-600 rounded-lg text-xs font-bold hover:bg-purple-700 transition-colors flex items-center gap-1 justify-center"
-                >
-                  <TrendingUp size={12} /> View Forecasts
-                </button>
-              </>
-            )}
+                  <p className="text-xs text-slate-400">Schedule visits to see AI forecasts.</p>
+                )
+              ) : (
+                <>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    AI optimized route planning can save 12km travel distance today.
+                  </p>
+                  <button
+                    onClick={() => setShowAIInsights(true)}
+                    className="w-full mt-4 py-2 bg-purple-600 rounded-lg text-xs font-bold hover:bg-purple-700 transition-colors flex items-center gap-1 justify-center"
+                  >
+                    <TrendingUp size={12} /> View Forecasts
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Schedule List */}
         <div className="lg:col-span-3 space-y-6">
           <div className="flex justify-between items-center">
             <h3 className="text-xl font-bold text-slate-900">
@@ -358,24 +394,16 @@ export default function VisitSchedule() {
                 <input
                   type="text"
                   placeholder="Search visits..."
-                  className="pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  className="pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none"
                 />
               </div>
-              <button className="p-2 bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50">
-                <Filter size={18} />
-              </button>
             </div>
           </div>
 
           <div className="space-y-4">
             {todaySchedules.length === 0 ? (
-              <div className="bg-white p-12 rounded-2xl border border-dashed border-slate-200 text-center">
-                <CalendarDays size={48} className="mx-auto text-slate-300 mb-4" />
-                <h4 className="text-lg font-bold text-slate-900">No visits scheduled</h4>
-                <p className="text-slate-500 mt-1">There are no visits planned for this date yet.</p>
-                <button onClick={() => { resetForm(); setShowScheduleModal(true); }} className="mt-6 px-6 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-colors">
-                  Schedule Now
-                </button>
+              <div className="bg-white p-12 rounded-2xl border border-dashed border-slate-200 text-center text-slate-500">
+                No visits scheduled for this date.
               </div>
             ) : (
               todaySchedules.map((visit, i) => (
@@ -383,67 +411,29 @@ export default function VisitSchedule() {
                   key={visit.id}
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.05 }}
-                  className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all flex items-center gap-6 group"
+                  className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-6"
                 >
                   <div className="w-20 text-center shrink-0 border-r border-slate-100 pr-6">
                     <p className="text-lg font-bold text-slate-900">{visit.scheduled_time}</p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">30 Mins</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">30 Mins</p>
                   </div>
-
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <h4 className="font-bold text-slate-900">{visit.doctor_name}</h4>
                       <span className={cn(
-                        "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider",
+                        "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
                         visit.priority === 'high' ? "bg-red-50 text-red-600" : "bg-blue-50 text-blue-600"
-                      )}>
-                        {visit.priority}
-                      </span>
+                      )}>{visit.priority}</span>
                     </div>
                     <div className="flex items-center gap-4 text-sm text-slate-500">
-                      <div className="flex items-center gap-1">
-                        <MapPin size={14} />
-                        {visit.clinic}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <User size={14} />
-                        {getMrName(visit.mr_id)}
-                      </div>
+                      <div className="flex items-center gap-1"><MapPin size={14} />{visit.clinic}</div>
+                      <div className="flex items-center gap-1"><User size={14} />{getMrName(visit.mr_id)}</div>
                     </div>
-                    <p className="text-xs text-slate-400 mt-2 italic">"{visit.purpose}"</p>
-                    {aiForecasts[visit.id] && (
-                      <div className="mt-2 flex items-center gap-2">
-                        <Brain size={12} className="text-purple-500" />
-                        <span className={cn(
-                          "text-[10px] font-bold px-2 py-0.5 rounded-full",
-                          aiForecasts[visit.id].lead_status === 'hot' ? "bg-green-50 text-green-600" :
-                          aiForecasts[visit.id].lead_status === 'warm' ? "bg-amber-50 text-amber-600" :
-                          "bg-slate-50 text-slate-500"
-                        )}>{aiForecasts[visit.id].lead_status}</span>
-                        <button
-                          onClick={() => openInspector(visit)}
-                          className="text-[10px] font-bold text-purple-600 hover:text-purple-700"
-                        >View AI Details</button>
-                      </div>
-                    )}
                   </div>
-
-                  <div className="flex items-center gap-3">
-                    <div className={cn(
-                      "px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider",
-                      visit.status === 'completed' ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"
-                    )}>
-                      {visit.status}
-                    </div>
-                    <button
-                      onClick={() => openInspector(visit)}
-                      className="p-2 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-all"
-                      title="AI Visit Analysis"
-                    >
-                      <Zap size={20} />
-                    </button>
-                  </div>
+                  <div className={cn(
+                    "px-3 py-1 rounded-full text-xs font-bold uppercase",
+                    visit.status === 'completed' ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"
+                  )}>{visit.status}</div>
                 </motion.div>
               ))
             )}
@@ -451,211 +441,111 @@ export default function VisitSchedule() {
         </div>
       </div>
 
-      {/* Schedule New Visit Modal */}
       <AnimatePresence>
         {showScheduleModal && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
             onClick={() => setShowScheduleModal(false)}
           >
             <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
+              initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
               className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto shadow-2xl"
               onClick={e => e.stopPropagation()}
             >
               <div className="sticky top-0 bg-white border-b border-slate-100 p-6 flex items-center justify-between rounded-t-2xl z-10">
-                <div>
-                  <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                    <CalendarIcon size={20} className="text-blue-600" />
-                    Schedule New Visit
-                  </h3>
-                  <p className="text-xs text-slate-500 mt-0.5">Assign an MR and entity for the visit</p>
-                </div>
+                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <CalendarIcon size={20} className="text-blue-600" /> Schedule New Visit
+                </h3>
                 <button onClick={() => setShowScheduleModal(false)} className="p-2 hover:bg-slate-100 rounded-lg"><X size={18} /></button>
               </div>
 
               <div className="p-6 space-y-4">
-                {/* Entity Type Tabs */}
+                {conflictError && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
+                    <AlertCircle className="text-red-500 shrink-0" size={18} />
+                    <div>
+                      <p className="text-xs font-bold text-red-800">Scheduling Conflict</p>
+                      <p className="text-[10px] text-red-600 mt-0.5">{conflictError}</p>
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <label className="text-xs text-slate-500 uppercase font-bold">Entity Type</label>
                   <div className="flex gap-2 mt-1">
-                    {([
-                      { key: 'doctor', label: 'Doctor', icon: Stethoscope, color: 'blue' },
-                      { key: 'chemist', label: 'Pharmacy', icon: Pill, color: 'emerald' },
-                      { key: 'hospital', label: 'Hospital', icon: Building2, color: 'purple' },
-                    ] as const).map(t => (
+                    {(['doctor', 'chemist', 'hospital'] as const).map(t => (
                       <button
-                        key={t.key}
-                        onClick={() => { setFormEntityType(t.key); setFormEntityId(null); setFormEntitySearch(''); }}
-                        className={cn(
-                          "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
-                          formEntityType === t.key
-                            ? `bg-${t.color}-100 text-${t.color}-700 border border-${t.color}-200`
-                            : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                        )}
-                      >
-                        <t.icon size={12} />{t.label}
-                      </button>
+                        key={t} onClick={() => { setFormEntityType(t); setFormEntityId(null); setFormEntitySearch(''); }}
+                        className={cn("px-3 py-1.5 rounded-lg text-xs font-bold capitalize", formEntityType === t ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500")}
+                      >{t}</button>
                     ))}
                   </div>
                 </div>
 
-                {/* Entity Search */}
                 <div>
                   <label className="text-xs text-slate-500 uppercase font-bold">Search Entity</label>
                   <input
-                    type="text"
-                    value={formEntitySearch}
+                    type="text" value={formEntitySearch}
                     onChange={e => { setFormEntitySearch(e.target.value); setFormEntityId(null); }}
-                    placeholder={`Search ${formEntityType === 'doctor' ? 'doctors' : formEntityType === 'chemist' ? 'pharmacies' : 'hospitals'}...`}
-                    className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm"
                   />
                   {filteredEntities.length > 0 && (
                     <div className="mt-1 max-h-[150px] overflow-y-auto space-y-1">
                       {filteredEntities.slice(0, 8).map((e: any) => (
                         <button
-                          key={e.id}
-                          onClick={() => { setFormEntityId(e.id); handleAutoAssign(e); }}
-                          className={cn(
-                            "w-full text-left px-3 py-2 rounded-lg text-xs transition-all",
-                            formEntityId === e.id ? "bg-blue-100 border border-blue-200" : "bg-slate-50 hover:bg-slate-100 border border-transparent"
-                          )}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-slate-900">{e.name}</span>
-                            {e.tier && <span className="text-[9px] px-1 py-0.5 bg-slate-200 rounded">Tier {e.tier}</span>}
-                          </div>
-                          {e.specialty && <p className="text-[10px] text-slate-500">{e.specialty}</p>}
-                          {e.territory && <p className="text-[10px] text-slate-400">{e.territory}</p>}
-                        </button>
+                          key={e.id} onClick={() => { setFormEntityId(e.id); handleSmartAutoAssign(e); }}
+                          className={cn("w-full text-left px-3 py-2 rounded-lg text-xs", formEntityId === e.id ? "bg-blue-100" : "bg-slate-50")}
+                        >{e.name}</button>
                       ))}
                     </div>
                   )}
-                  {formEntityId && (
-                    <p className="text-[10px] text-green-600 mt-1 flex items-center gap-1">
-                      <CheckCircle2 size={10} />Entity selected
-                    </p>
-                  )}
                 </div>
 
-                {/* MR Assignment */}
                 <div>
-                  <label className="text-xs text-slate-500 uppercase font-bold">Assign MR</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs text-slate-500 uppercase font-bold">Assign MR</label>
+                    <button 
+                      onClick={() => handleSmartAutoAssign()} disabled={aiAssigning || !formEntityId}
+                      className="text-[10px] font-black uppercase text-blue-600 flex items-center gap-1"
+                    >
+                      {aiAssigning ? <Loader2 size={10} className="animate-spin" /> : <Brain size={10} />} AI Smart Assign
+                    </button>
+                  </div>
                   <select
-                    value={formMrId || ''}
-                    onChange={e => setFormMrId(Number(e.target.value))}
+                    value={formMrId || ''} onChange={e => { setFormMrId(Number(e.target.value)); setAiSuggestions(null); }}
                     className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm"
                   >
                     <option value="">Choose an MR...</option>
-                    {mrs.map(mr => (
-                      <option key={mr.id} value={mr.id}>{mr.name} — {mr.territory}</option>
-                    ))}
+                    {mrs.map(mr => <option key={mr.id} value={mr.id}>{mr.name} — {mr.territory}</option>)}
                   </select>
-                  {formEntityId && formMrId && (
-                    <p className="text-[10px] text-blue-600 mt-1 flex items-center gap-1">
-                      <CheckCircle2 size={10} />Auto-assigned based on territory match
-                    </p>
+                  {aiSuggestions && (
+                    <div className="mt-2 p-3 bg-blue-50 border border-blue-100 rounded-lg">
+                      <div className="flex items-center justify-between text-xs font-bold text-slate-900">
+                        <span>{aiSuggestions.best_mr.name}</span>
+                        <span className="text-blue-600">{aiSuggestions.best_mr.score}% Match</span>
+                      </div>
+                    </div>
                   )}
                 </div>
 
-                {/* Date & Time */}
                 <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-xs text-slate-500 uppercase font-bold">Date</label>
-                    <input
-                      type="date"
-                      value={formDate}
-                      onChange={e => setFormDate(e.target.value)}
-                      className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-500 uppercase font-bold">Time</label>
-                    <input
-                      type="time"
-                      value={formTime}
-                      onChange={e => setFormTime(e.target.value)}
-                      className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                    />
-                  </div>
+                  <input type="date" value={formDate} onChange={e => setFormDate(e.target.value)} className="px-3 py-2 border border-slate-200 rounded-lg text-sm" />
+                  <input type="time" value={formTime} onChange={e => setFormTime(e.target.value)} className="px-3 py-2 border border-slate-200 rounded-lg text-sm" />
                 </div>
 
-                {/* Purpose & Priority */}
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-xs text-slate-500 uppercase font-bold">Priority</label>
-                    <select
-                      value={formPriority}
-                      onChange={e => setFormPriority(e.target.value as any)}
-                      className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                    >
-                      <option value="high">High</option>
-                      <option value="medium">Medium</option>
-                      <option value="low">Low</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-xs text-slate-500 uppercase font-bold">Purpose</label>
-                    <input
-                      type="text"
-                      value={formPurpose}
-                      onChange={e => setFormPurpose(e.target.value)}
-                      placeholder="e.g. Product Demo"
-                      className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs text-slate-500 uppercase font-bold">Notes (Optional)</label>
-                  <textarea
-                    value={formNotes}
-                    onChange={e => setFormNotes(e.target.value)}
-                    rows={2}
-                    placeholder="Additional context for this visit..."
-                    className="w-full mt-1 px-3 py-2 border border-slate-200 rounded-lg text-sm resize-none"
-                  />
-                </div>
-
-                {/* Submit */}
                 <div className="grid grid-cols-2 gap-2 pt-2">
+                  <button onClick={() => setShowScheduleModal(false)} className="px-4 py-2.5 bg-slate-200 text-slate-700 rounded-lg text-sm">Cancel</button>
                   <button
-                    onClick={() => setShowScheduleModal(false)}
-                    className="px-4 py-2.5 bg-slate-200 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-300"
+                    onClick={handleSubmitSchedule} disabled={submitting || !formMrId || !formEntityId}
+                    className="px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm flex items-center gap-2 justify-center"
                   >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleSubmitSchedule}
-                    disabled={submitting || !formMrId || !formEntityId}
-                    className="px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 justify-center"
-                  >
-                    {submitting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-                    {submitting ? 'Scheduling...' : 'Schedule Visit'}
+                    {submitting ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} {submitting ? 'Scheduling...' : 'Schedule Visit'}
                   </button>
                 </div>
               </div>
             </motion.div>
           </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* AI Visit Inspector Modal */}
-      <AnimatePresence>
-        {inspectingEntity && (
-          <AIVisitInspector
-            entityName={inspectingEntity.name}
-            entityType={inspectingEntity.type}
-            entityTier={inspectingEntity.tier}
-            entityTerritory={inspectingEntity.territory}
-            entitySpecialty={inspectingEntity.specialty}
-            onClose={() => setInspectingEntity(null)}
-          />
         )}
       </AnimatePresence>
     </div>

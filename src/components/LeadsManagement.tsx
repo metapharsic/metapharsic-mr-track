@@ -2,11 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import { Lead, MR, Visit } from '../types';
 import { useAuth } from '../contexts/AuthContext';
+import { useNotifications } from '../contexts/NotificationContext';
 import {
   UserPlus, MessageSquare, Calendar,
   CheckCircle2, Zap, Loader2, User, MapPin,
   TrendingUp, FileText, Check, X, Search,
-  Target, DollarSign, Clock, ArrowUpRight
+  Target, DollarSign, Clock, ArrowUpRight,
+  Sparkles, PartyPopper
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -25,6 +27,7 @@ interface AnalysisResult {
 
 export default function LeadsManagement() {
   const { user } = useAuth();
+  const { addNotification } = useNotifications();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [mrs, setMrs] = useState<MR[]>([]);
   const [visits, setVisits] = useState<Visit[]>([]);
@@ -36,6 +39,8 @@ export default function LeadsManagement() {
   const [forecastProgress, setForecastProgress] = useState(0);
   const [conversionChecking, setConversionChecking] = useState(false);
   const [conversionProgress, setConversionProgress] = useState(0);
+  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
+  const [convertedLeadsCount, setConvertedLeadsCount] = useState(0);
 
   useEffect(() => {
     Promise.all([
@@ -105,27 +110,51 @@ export default function LeadsManagement() {
       const [allSales] = await Promise.all([
         api.sales?.getAll ? api.sales.getAll() : Promise.resolve([])
       ]);
-      const activeLeads = leads.filter(l => l.status === 'assigned');
+      // Check both assigned and new leads
+      const activeLeads = leads.filter(l => l.status === 'assigned' || l.status === 'new');
       let completed = 0;
+      let convertedCount = 0;
       
       const salesList = (allSales as any[]) || [];
 
       for (const lead of activeLeads) {
-        // Find matching sale
-        const docName = lead.doctor_name.toLowerCase().replace('dr.', '').trim();
-        const hasSale = salesList.some((s: any) => {
-           const custName = (s.customer_name || '').toLowerCase();
-           return custName.includes(docName) || docName.includes(custName);
+        // Find matching sale with improved cleaning
+        const cleanLeadName = lead.doctor_name.toLowerCase()
+          .replace(/^dr\.\s*/, '')
+          .replace(/\s+was\s+impressed.*$/, '') 
+          .replace(/\s+is\s+interested.*$/, '')
+          .trim();
+          
+        if (cleanLeadName.length < 3) continue;
+
+        const matchingSale = salesList.find((s: any) => {
+          const custName = (s.customer_name || s.doctor_name || '').toLowerCase();
+          return custName.includes(cleanLeadName) || cleanLeadName.includes(custName);
         });
 
-        if (hasSale) {
-          const updatedLead = await api.leads.update(lead.id, { status: 'converted' });
+        if (matchingSale) {
+          const updatedLead = await api.leads.update(lead.id, { 
+            status: 'converted',
+            actual_revenue: matchingSale.amount,
+            conversion_probability: 100
+          });
           setLeads(prev => prev.map(l => l.id === lead.id ? updatedLead : l));
+          convertedCount++;
         }
 
-        await new Promise(r => setTimeout(r, 150));
+        await new Promise(r => setTimeout(r, 50));
         completed++;
         setConversionProgress(Math.round((completed / activeLeads.length) * 100));
+      }
+
+      if (convertedCount > 0) {
+        setConvertedLeadsCount(convertedCount);
+        setShowSuccessPopup(true);
+        addNotification({
+          title: 'AI Lead Sync',
+          message: `Successfully auto-converted ${convertedCount} leads based on matched sales records.`,
+          type: 'success'
+        });
       }
     } catch (error) {
       console.error('Auto-conversion error:', error);
@@ -226,41 +255,85 @@ export default function LeadsManagement() {
     // 2) Analyze visit transcripts for potential new leads
     for (const visit of completedVisits) {
       const mr = mrs.find(m => m.id === visit.mr_id);
-      const combined = `${visit.conversation_summary || ''} ${visit.notes || ''}`.toLowerCase();
+      const combined = `${visit.conversation_summary || ''} ${visit.notes || ''} ${visit.transcription || ''}`.toLowerCase();
+      
       const leadSignals = [
         'interested', 'send me', 'proposal', 'samples', 'follow up',
         'presentation', 'request', 'need', 'would like', 'looking for',
         'asked about', 'asked', 'bring me', 'discussed', 'bulk',
-        'discount', 'credit', 'order'
+        'discount', 'credit', 'order', 'pricing', 'competitor', 'trial'
       ];
+      
       const positiveCount = leadSignals.filter(s => combined.includes(s)).length;
       const hasOrder = visit.order_value > 0;
 
-      if (positiveCount >= 1) {
-        const confidence = Math.min(positiveCount * 20, 95);
+      // Increase threshold to 2 signals OR an order to ensure high-quality leads
+      if (positiveCount >= 2 || hasOrder) {
+        const confidence = Math.min(positiveCount * 15 + (hasOrder ? 40 : 0), 98);
         const text = `${visit.conversation_summary || ''} ${visit.notes || ''}`;
-        // Extract doctor/entity name from the conversation
+        
+        // Extract doctor/entity name carefully
         let doctorName = visit.entity_name || 'Unknown';
         let specialty = 'Unknown';
-        // Try to pull a name from conversation_summary patterns like "Dr. Ramesh"
-        const nameMatch = combined.match(/dr\.\s*([a-z][a-z\s]+)/i);
-        if (nameMatch) {
-          doctorName = `Dr. ${nameMatch[1].trim().replace(/\b\w/g, c => c.toUpperCase())}`;
+
+        // ONLY attempt to extract name if entity_name is missing or too generic
+        if (doctorName === 'Unknown' || doctorName === 'doctor' || doctorName.toLowerCase().includes('chemist')) {
+          // Improved Regex: match "Dr." followed by 1-3 words, then stop
+          const nameMatch = combined.match(/dr\.\s*([a-z]+(?:\s+[a-z]+){0,2})/i);
+          if (nameMatch) {
+            const extracted = nameMatch[1].trim().replace(/\b\w/g, c => c.toUpperCase());
+            if (extracted.length > 3 && !extracted.toLowerCase().includes('impressed') && !extracted.toLowerCase().includes('interested')) {
+              doctorName = `Dr. ${extracted}`;
+            }
+          }
         }
+
         const specialtyMatch = combined.match(/(cardiolog|gynae|surg|orth|derma|pediatr|general|ent|ophthal|diabet|endoc|gastro|urolog|neuro)/i);
         if (specialtyMatch) {
-          specialty = specialtyMatch[1];
+          specialty = specialtyMatch[1].charAt(0).toUpperCase() + specialtyMatch[1].slice(1);
         }
-        const visitMr = mrs.find(m => m.territory === mr?.territory) || mrs[0];
-        if (visitMr) {
+
+        const visitMr = mr || mrs[0];
+        if (visitMr && doctorName !== 'Unknown' && doctorName.length > 5) {
+          const isHighPriority = positiveCount >= 4 || hasOrder;
+          const newLeadPayload = {
+            doctor_name: doctorName,
+            specialty: specialty,
+            territory: mr?.territory || 'Unknown',
+            priority: isHighPriority ? 'high' : 'medium',
+            status: 'assigned' as const,
+            comments: `AI Detected from ${visit.purpose || 'Visit'}: ${visit.conversation_summary?.substring(0, 150) || 'Positive interest detected'}`,
+            assigned_mr_id: visitMr.id || 0,
+            assigned_mr_name: visitMr.name || 'Unknown',
+            expected_revenue: hasOrder ? Math.max(visit.order_value, 50000) : (positiveCount * 18000),
+            conversion_probability: confidence,
+            ai_generated: true,
+            last_contact_date: visit.visit_date || new Date().toISOString().split('T')[0]
+          };
+
+          // Check if lead already exists to avoid duplicates
+          const existingLead = leads.find(l => 
+            l.doctor_name.toLowerCase().includes(doctorName.toLowerCase()) ||
+            doctorName.toLowerCase().includes(l.doctor_name.toLowerCase())
+          );
+
+          if (!existingLead) {
+            try {
+              const createdLead = await api.leads.create(newLeadPayload as Lead);
+              setLeads(prev => [createdLead as Lead, ...prev]);
+            } catch (e) {
+              console.error("Failed to create forecast lead", e);
+            }
+          }
+
           results.push({
             is_lead: true,
             doctor_name: doctorName,
             specialty: specialty,
             territory: mr?.territory || 'Unknown',
-            priority: positiveCount >= 3 ? 'high' : 'medium',
+            priority: isHighPriority ? 'high' : 'medium',
             confidence,
-            reasoning: `Visit: ${visit.purpose}. ${text.trim()}`,
+            reasoning: `Signals: ${positiveCount}. ${text.trim().substring(0, 100)}...`,
             mr_id: visitMr.id || 0,
             mr_name: visitMr.name || 'Unknown'
           });
@@ -555,6 +628,11 @@ export default function LeadsManagement() {
                       )}>
                         {lead.status}
                       </span>
+                      {lead.is_cold && lead.status !== 'converted' && (
+                        <span className="px-2 py-0.5 bg-orange-100 text-orange-700 rounded-full text-[10px] font-bold uppercase animate-pulse flex items-center gap-1">
+                          <Clock className="w-3 h-3" /> Cold Lead
+                        </span>
+                      )}
                       {/* Phase 4: AI Conversion Probability Badge */}
                       {lead.conversion_probability && lead.status !== 'converted' && (
                         <span className={cn(
@@ -674,6 +752,62 @@ export default function LeadsManagement() {
           ))}
         </AnimatePresence>
       </div>
+
+      {/* Success Popup (Modal) */}
+      <AnimatePresence>
+        {showSuccessPopup && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden border border-slate-200"
+            >
+              <div className="bg-gradient-to-br from-purple-600 to-blue-600 p-8 text-center text-white relative">
+                <motion.div
+                  initial={{ rotate: -15, scale: 0 }}
+                  animate={{ rotate: 0, scale: 1 }}
+                  transition={{ delay: 0.2, type: 'spring' }}
+                  className="inline-block p-4 bg-white/20 rounded-full mb-4"
+                >
+                  <PartyPopper className="w-12 h-12 text-white" />
+                </motion.div>
+                <h2 className="text-2xl font-bold mb-2">AI Sync Success!</h2>
+                <p className="opacity-90">Lead analysis and conversion complete</p>
+                
+                {/* Decorative sparkles */}
+                <Sparkles className="absolute top-4 left-4 w-6 h-6 text-yellow-300 animate-pulse" />
+                <Sparkles className="absolute bottom-4 right-4 w-6 h-6 text-yellow-300 animate-pulse" />
+              </div>
+
+              <div className="p-6 text-center">
+                <div className="flex items-center justify-center gap-4 mb-6">
+                  <div className="text-center">
+                    <p className="text-3xl font-bold text-slate-800">{convertedLeadsCount}</p>
+                    <p className="text-xs text-slate-500 uppercase font-bold tracking-wider">Leads Converted</p>
+                  </div>
+                  <div className="w-px h-10 bg-slate-200" />
+                  <div className="text-center">
+                    <p className="text-3xl font-bold text-green-600">100%</p>
+                    <p className="text-xs text-slate-500 uppercase font-bold tracking-wider">Confidence</p>
+                  </div>
+                </div>
+
+                <p className="text-slate-600 text-sm mb-8">
+                  The AI engine successfully matched your recent sales records with active leads, auto-updating their status and revenue metrics.
+                </p>
+
+                <button
+                  onClick={() => setShowSuccessPopup(false)}
+                  className="w-full py-3 bg-slate-900 text-white rounded-xl font-semibold hover:bg-slate-800 transition-colors shadow-lg shadow-slate-200"
+                >
+                  Great Work!
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

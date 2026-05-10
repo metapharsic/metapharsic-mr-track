@@ -24,6 +24,7 @@ import {
   FileCheck,
   CreditCard,
   Brain,
+  Globe,
   ChevronDown,
   ChevronRight
 } from 'lucide-react';
@@ -89,6 +90,7 @@ const navCategories = [
       { icon: LayoutGrid, label: 'MR Dashboard', path: '/mr-dashboard', permission: 'mr-dashboard.view', roles: ['mr'] },
       { icon: TrendingUp, label: 'Performance', path: '/performance', permission: 'performance.view' },
       { icon: Brain, label: 'AI Performance', path: '/ai-performance', permission: 'data.view' },
+      { icon: Globe, label: 'Market War Room', path: '/market-war-room', permission: 'data.view', roles: ['admin', 'manager'] },
     ]
   },
   {
@@ -215,9 +217,12 @@ export default function Sidebar({ onOpenSearch }: SidebarProps) {
           </button>
         </div>
 
-        <div className="p-6 border-b border-slate-800">
-          <h1 className="text-xl font-bold text-blue-400 tracking-tight">Metapharsic</h1>
-          <p className="text-xs text-slate-400 uppercase font-semibold mt-1">Lifesciences</p>
+        <div className="p-4 border-b border-slate-800 flex flex-col items-center">
+          <div className="w-20 h-20 rounded-full bg-white p-1 mb-2 shadow-inner flex items-center justify-center overflow-hidden">
+            <img src="/logo.png" alt="Metapharsic Logo" className="w-full h-full object-contain" />
+          </div>
+          <h1 className="text-sm font-bold text-blue-400 tracking-tight">Metapharsic</h1>
+          <p className="text-[10px] text-slate-400 uppercase font-semibold">Lifesciences</p>
         </div>
 
       {/* AI Search Button */}
@@ -330,9 +335,9 @@ export default function Sidebar({ onOpenSearch }: SidebarProps) {
           <GPSToggle mrId={user.mr_id} mrName={user.name} />
         </div>
       )}
-
-      <NotificationPanel />
     </div>
+    
+    <NotificationPanel />
     </>
   );
 }

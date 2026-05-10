@@ -119,11 +119,11 @@ export default function Login() {
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4 shadow-lg shadow-blue-600/30">
-            <Pill className="w-8 h-8 text-white" />
+          <div className="inline-flex items-center justify-center w-36 h-36 bg-white rounded-full mb-6 shadow-2xl border-4 border-white/50 overflow-hidden p-1 group transition-transform hover:scale-105 duration-300">
+            <img src="/logo.png" alt="Metapharsic Logo" className="w-full h-full object-contain" />
           </div>
-          <h1 className="text-2xl font-bold text-white">Metapharsic</h1>
-          <p className="text-slate-400 mt-1">Life Sciences - Target & Expense Manager</p>
+          <h1 className="text-3xl font-bold text-white tracking-tight">Metapharsic</h1>
+          <p className="text-slate-400 mt-1 font-medium">Life Sciences - Target & Expense Manager</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-2xl p-8">

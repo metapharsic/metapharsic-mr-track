@@ -198,7 +198,7 @@ export const geminiService = {
     } catch { return null; }
   },
 
-  analyzeSales: async (query: string, salesSummary: string) => {
+  analyzeSales: async (query: string, salesDataJson: string) => {
     if (!ai) {
       return null; // fallback to client-side
     }
@@ -206,7 +206,20 @@ export const geminiService = {
     try {
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: `You are a pharmaceutical sales analytics AI. Sales Data: ${salesSummary}. Query: "${query}". Provide a concise, actionable response with specific recommendations.`,
+        contents: `You are an expert pharmaceutical sales analytics AI for "Metapharsic Life Sciences".
+        
+You have access to the following JSON data context about current sales performance:
+${salesDataJson}
+
+The user has asked the following query:
+"${query}"
+
+Instructions for your response:
+1. Directly answer the user's query using the provided data context.
+2. Format your response cleanly using Markdown (use bolding for metrics, bullet points for lists).
+3. If identifying an issue (e.g., declining trend, low stock, underperforming MR), immediately suggest a concrete, actionable next step.
+4. If identifying a success (e.g., top MR, top product), suggest how to replicate it or double down on it.
+5. Keep the tone professional, highly analytical, concise, and focused on pharmaceutical sales strategy.`,
         config: {
           responseMimeType: "text/plain",
         },
@@ -217,16 +230,115 @@ export const geminiService = {
     }
   },
 
-  analyzeExpenses: async (query: string, expenseSummary: string) => {
+  analyzeExpenses: async (query: string, expenseDataJson: string) => {
     if (!ai) return null;
     try {
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: `You are an expense optimization AI for a pharmaceutical sales company. Expense Data: ${expenseSummary}. Query: "${query}". Provide specific, actionable recommendations to reduce costs. Be concise.`,
+        contents: `You are an expert Expense Optimization AI for a pharmaceutical sales company.
+
+You have access to the following JSON data context about current MR expenses:
+${expenseDataJson}
+
+The user has asked the following query:
+"${query}"
+
+Instructions for your response:
+1. Directly answer the user's query using the provided data context.
+2. Format your response cleanly using Markdown (use bolding for metrics, bullet points for lists).
+3. If identifying an issue (e.g., high travel costs, MR overspending), immediately suggest a concrete, actionable cost-reduction step.
+4. Highlight categories or territories where spending is well-optimized.
+5. Keep the tone professional, highly analytical, concise, and focused on pharmaceutical expense management.`,
         config: { responseMimeType: "text/plain" },
       });
       return response.text || null;
     } catch {
+      return null;
+    }
+  },
+  analyzeVisitTranscript: async (transcript: string, doctorName: string) => {
+    if (!ai) {
+      return {
+        summary: "Doctor showed interest in the product portfolio. Follow-up recommended.",
+        sentiment: "positive",
+        detectedProducts: ["CardiCare"],
+        confidence: 0.7
+      };
+    }
+
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Analyze this Medical Representative's visit transcript with ${doctorName}.
+        
+        Transcript: "${transcript}"
+
+        Extract the following:
+        1. An Executive Summary (max 150 chars).
+        2. Overall Sentiment (positive, neutral, negative).
+        3. A list of pharmaceutical products mentioned.
+        
+        Respond in JSON format with:
+        {
+          "summary": string,
+          "sentiment": "positive" | "neutral" | "negative",
+          "detectedProducts": string[],
+          "confidence": number
+        }`,
+        config: { responseMimeType: "application/json" },
+      });
+      return JSON.parse(response.text || "{}");
+    } catch (error) {
+      console.error("Error analyzing transcript:", error);
+      return null;
+    }
+  },
+
+  parseFieldSync: async (transcript: string) => {
+    if (!ai) {
+      return {
+        actions: [
+          { type: 'visit_summary', entity_name: 'MedPlus Pharmacy', details: 'Routine check done.' }
+        ],
+        confidence: 0.5
+      };
+    }
+
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `You are an expert field data extractor for a pharmaceutical CRM. 
+        Analyze the following Medical Representative's voice transcript and extract multiple structured actions.
+        
+        Transcript: "${transcript}"
+
+        Actions to look for:
+        1. "sale" - Extract entity_name, product_name, quantity, and amount.
+        2. "payment" - Extract entity_name, amount, and payment_method.
+        3. "visit_summary" - Extract entity_name and a brief summary/notes.
+
+        Respond in JSON format with an array of actions:
+        {
+          "actions": [
+            {
+              "type": "sale" | "payment" | "visit_summary",
+              "entity_name": string,
+              "product_name"?: string,
+              "quantity"?: number,
+              "amount"?: number,
+              "payment_method"?: string,
+              "details"?: string
+            }
+          ],
+          "confidence": number
+        }
+
+        If you are unsure of the entity name, try to match it against common pharmacy/hospital/doctor patterns.`,
+        config: { responseMimeType: "application/json" },
+      });
+      return JSON.parse(response.text || "{}");
+    } catch (error) {
+      console.error("Error parsing field sync:", error);
       return null;
     }
   },

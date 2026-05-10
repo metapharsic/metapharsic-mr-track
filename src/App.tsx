@@ -32,6 +32,8 @@ const Settings = lazy(() => import('./components/Settings'));
 const Login = lazy(() => import('./components/Login'));
 const UserManagement = lazy(() => import('./components/UserManagement'));
 const DynamicDashboard = lazy(() => import('./components/DynamicDashboard'));
+const Notifications = lazy(() => import('./components/Notifications'));
+const MarketWarRoom = lazy(() => import('./components/MarketWarRoom'));
 
 const LoadingFallback = () => (
   <div style={{ 
@@ -196,6 +198,8 @@ function AppContent() {
               <Route path="/approvals" element={<ProtectedRoute requiredPermission="expenses.approve"><ApprovalWorkflow /></ProtectedRoute>} />
               <Route path="/entity-credits" element={<ProtectedRoute requiredPermission="data.view"><EntityCredits /></ProtectedRoute>} />
               <Route path="/ai-performance" element={<ProtectedRoute requiredPermission="data.view"><AIPerformanceDashboard /></ProtectedRoute>} />
+              <Route path="/market-war-room" element={<ProtectedRoute requiredPermission="data.view"><MarketWarRoom /></ProtectedRoute>} />
+              <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
               <Route path="/unauthorized" element={<Navigate to="/" replace />} />
               <Route path="/login" element={<Navigate to="/" replace />} />
             </Routes>

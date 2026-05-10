@@ -527,10 +527,26 @@ export default function MRManagement() {
                 Last Visit: 2h ago
               </div>
               <div className="flex gap-2">
-                <button className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors">
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedMr(mr);
+                    setIsPanelOpen(true);
+                    setActiveTab('history');
+                  }}
+                  className="px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors"
+                >
                   View Profile
                 </button>
-                <button className="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors">
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedMr(mr);
+                    setIsPanelOpen(true);
+                    setActiveTab('sales');
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors shadow-lg shadow-blue-600/20"
+                >
                   Performance
                 </button>
               </div>
