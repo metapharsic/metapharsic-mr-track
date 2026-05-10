@@ -102,37 +102,37 @@ export default function DynamicDashboard() {
 
   // Chart data preparations
   const trendData = [
-    ...charts.monthlyTrends.map((t: any) => ({
+    ...(charts.monthlyTrends || []).map((t: any) => ({
       name: new Date(t.month + '-01').toLocaleString('default', { month: 'short' }),
       month: t.month, sales: parseFloat(t.sales), target: parseFloat(t.target), isForecast: false,
     })),
-    ...forecast.map(f => ({
+    ...(forecast || []).map(f => ({
       name: new Date(f.month + '-01').toLocaleString('default', { month: 'short' }),
       month: f.month, forecast: f.predicted_sales, target: null,
       confidence_high: f.confidence_high, confidence_low: f.confidence_low, isForecast: true,
     }))
   ].sort((a: any, b: any) => a.month.localeCompare(b.month));
 
-  const leaderboard = charts.leaderboard.map((mr: any) => ({
+  const leaderboard = (charts.leaderboard || []).map((mr: any) => ({
     name: mr.name.split(' ')[0], sales: parseFloat(mr.sales), score: mr.score,
   }));
 
-  const productData = charts.productSales.map((p: any) => ({
+  const productData = (charts.productSales || []).map((p: any) => ({
     name: p.name?.split(' ')[0] || 'Product',
     sales: parseFloat(p.sales),
   }));
 
-  const expenseData = charts.expenseBreakdown.map((e: any) => ({
+  const expenseData = (charts.expenseBreakdown || []).map((e: any) => ({
     name: e.name || 'Other',
     amount: parseFloat(e.amount),
   }));
 
-  const salesByType = charts.salesByType.map((s: any) => ({
+  const salesByType = (charts.salesByType || []).map((s: any) => ({
     name: s.name.replace('_', ' '),
     value: parseInt(s.value),
   }));
 
-  const leadsByStage = charts.leadsPipeline.map((l: any) => ({
+  const leadsByStage = (charts.leadsPipeline || []).map((l: any) => ({
     name: l.name || 'New',
     count: parseInt(l.count),
   }));
@@ -358,7 +358,7 @@ export default function DynamicDashboard() {
           <div className={gridClass}>
             <W title="Recent Field Activity">
               <div className="space-y-3">
-                {charts.recentVisits.slice(0, 5).map((v: any) => (
+                {(charts.recentVisits || []).slice(0, 5).map((v: any) => (
                   <div key={v.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                     <div className="flex items-center gap-3">
                       <Calendar size={16} className="text-blue-500" />
@@ -372,7 +372,7 @@ export default function DynamicDashboard() {
                     </span>
                   </div>
                 ))}
-                {charts.recentVisits.length === 0 && <p className="text-sm text-slate-400 text-center py-8">No recent activity</p>}
+                {(!charts.recentVisits || charts.recentVisits.length === 0) && <p className="text-sm text-slate-400 text-center py-8">No recent activity</p>}
               </div>
             </W>
           </div>
@@ -397,7 +397,7 @@ export default function DynamicDashboard() {
           <div className={gridClass}>
             <W title="Recent Sales">
               <div className="space-y-3">
-                {charts.recentSales.slice(0, 5).map((sale: any) => (
+                {(charts.recentSales || []).slice(0, 5).map((sale: any) => (
                   <div key={sale.id} className="flex items-center justify-between p-3 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-100 transition-colors">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-full bg-blue-50 flex items-center justify-center text-blue-600"><Package size={16} /></div>
@@ -411,7 +411,7 @@ export default function DynamicDashboard() {
                     </div>
                   </div>
                 ))}
-                {charts.recentSales.length === 0 && <p className="text-sm text-slate-400 text-center py-8">No sales data available</p>}
+                {(!charts.recentSales || charts.recentSales.length === 0) && <p className="text-sm text-slate-400 text-center py-8">No sales data available</p>}
               </div>
             </W>
           </div>

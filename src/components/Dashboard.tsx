@@ -55,29 +55,29 @@ export default function Dashboard() {
   ];
 
   // Combine historical trends and forecast for the chart
-  const trendData = [
-    ...charts.monthlyTrends.map((t: any) => ({
+  const combinedTrends = [
+    ...(charts.monthlyTrends || []).map((t: any) => ({
       name: new Date(t.month + '-01').toLocaleString('default', { month: 'short' }),
       month: t.month,
       sales: parseFloat(t.sales),
       target: parseFloat(t.target),
-      isForecast: false
+      isForecast: false,
     })),
-    ...forecast.map(f => ({
+    ...(forecast || []).map(f => ({
       name: new Date(f.month + '-01').toLocaleString('default', { month: 'short' }),
       month: f.month,
       forecast: f.predicted_sales,
       target: null,
       confidence_high: f.confidence_high,
       confidence_low: f.confidence_low,
-      isForecast: true
+      isForecast: true,
     }))
-  ].sort((a, b) => a.month.localeCompare(b.month));
+  ].sort((a: any, b: any) => a.month.localeCompare(b.month));
 
-  const leaderboard = charts.leaderboard.map((mr: any) => ({
+  const leaderboard = (charts.leaderboard || []).map((mr: any) => ({
     name: mr.name.split(' ')[0],
     sales: parseFloat(mr.sales),
-    score: mr.score
+    score: mr.score,
   }));
 
   return (
@@ -272,7 +272,7 @@ export default function Dashboard() {
         <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
           <h3 className="text-lg font-bold text-slate-900 mb-6">Recent Sales Activity</h3>
           <div className="space-y-4">
-            {charts.recentSales.map((sale: any) => (
+            {(charts.recentSales || []).map((sale: any) => (
               <div key={sale.id} className="flex items-center justify-between p-4 rounded-xl hover:bg-slate-50 transition-colors border border-transparent hover:border-slate-100">
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center text-blue-600">

@@ -1490,7 +1490,12 @@ async function startServer() {
             sales: m.total_sales,
             score: m.performance_score
           })),
-          recentSales: data.sales.slice(0, 5)
+          recentSales: data.sales.slice(0, 5),
+          productSales: [],
+          expenseBreakdown: [],
+          salesByType: [],
+          leadsPipeline: [],
+          recentVisits: []
         });
       }
     } catch (error) {
